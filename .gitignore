@@ -1,0 +1,30 @@
+# Sécurité (Critique)
+.env
+.env.*
+!.env.example
+
+# Environnements virtuels Python (Poetry / uv / standard)
+venv/
+.venv/
+env/
+
+# Cache et fichiers compilés Python
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.ruff_cache/
+
+# Logs et données locales
+*.log
+pgdata/
+
+# Outils de test
+.pytest_cache/
+.coverage
+
+# Configuration IDE et OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
