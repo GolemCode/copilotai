@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     build:
@@ -7,14 +5,20 @@ services:
       dockerfile: Dockerfile.db
     container_name: copilot_postgres
     restart: always
+    env_file: 
+      - .env
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Airflow et l'App DOIVENT avoir des bases séparées. 
+      # Note : Tu devras configurer ton init.sql pour créer ces deux bases.
       POSTGRES_DB: ${DB_NAME}
+    image: pgvector/pgvector:pg16
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
     networks:
       - copilot_network
 
@@ -27,9 +31,131 @@ services:
     networks:
       - copilot_network
 
+  api:
+    build: .
+    container_name: copilot_api
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
+    # 1. Ajout du flag --reload à la fin de la commande
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - shared_shm:/tmp/shared
+      # 2. Synchronisation de ton code local avec le répertoire /app du conteneur
+      - .:/app 
+    networks:
+      - copilot_network
+
+  worker:
+    build: .
+    container_name: copilot_worker
+    restart: always
+    env_file:
+      - .env  # Obligatoire pour que Celery puisse écrire dans la DB
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    command: celery -A app.worker.celery_app worker --loglevel=info
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - shared_shm:/tmp/shared
+      - .:/app
+    networks:
+      - copilot_network
+
+  frontend:
+    build: ./frontend
+    container_name: copilot_frontend
+    restart: always
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Obligatoire pour le Hot Reload sous Windows/WSL
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app # Synchronisation du code local avec le conteneur
+      - /app/node_modules # Sécurisation des modules compilés
+    networks:
+      - copilot_network
+
+  airflow-init:
+    image: apache/airflow:2.9.1
+    container_name: copilot_airflow_init
+    env_file:
+      - .env
+    environment:
+      # Isolation : Airflow tape dans airflow_db, pas dans ta DB métier
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@db:5432/airflow_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    depends_on:
+      - db
+    networks:
+      - copilot_network
+    command: version
+
+  airflow-webserver:
+    image: apache/airflow:2.9.1
+    container_name: copilot_airflow_webserver
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@db:5432/airflow_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    networks:
+      - copilot_network
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.1
+    container_name: copilot_airflow_scheduler
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@db:5432/airflow_db
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    networks:
+      - copilot_network
+    command: scheduler
+
 networks:
   copilot_network:
     driver: bridge
 
 volumes:
   pgdata:
+  shared_shm:

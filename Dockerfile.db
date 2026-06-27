@@ -1,20 +1,18 @@
 FROM timescale/timescaledb:latest-pg15
 
+# Copie des scripts d'initialisation si nécessaire
+COPY ./database/init_db.sql /docker-entrypoint-initdb.d/
+
 USER root
 
-# Installation des dépendances pour compiler pgvector
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    postgresql-server-dev-15 \
+# Installation minimale des dépendances sous Alpine Linux
+RUN apk add --no-cache \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    build-base
 
-# Clonage et compilation de pgvector
+# Clonage et compilation de pgvector en désactivant strictement LLVM
 RUN git clone --branch v0.5.1 https://github.com/pgvector/pgvector.git /tmp/pgvector && \
     cd /tmp/pgvector && \
-    make && \
-    make install && \
+    make with_llvm=no && \
+    make install with_llvm=no && \
     rm -rf /tmp/pgvector
-
-USER postgres
