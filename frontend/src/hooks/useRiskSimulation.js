@@ -1,16 +1,22 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 export function useRiskSimulation() {
   const [status, setStatus] = useState('idle');
   const [result, setResult] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
   const ws = useRef(null);
 
-  const startSimulation = (requestData) => {
+  const startSimulation = useCallback((requestData) => {
     setResult(null);
+    setErrorMessage(null);
     setStatus('loading');
 
     if (ws.current) {
-      ws.current.close();
+      try {
+        ws.current.close();
+      } catch {
+        // fermeture d'une connexion déjà close : rien à faire
+      }
     }
 
     const currentClientId = typeof crypto.randomUUID === 'function'
@@ -18,15 +24,16 @@ export function useRiskSimulation() {
       : `client-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
     try {
-      ws.current = new WebSocket(`ws://localhost:8000/ws/${currentClientId}`);
+      // Même origine que la page : le serveur Vite (ou un reverse proxy) relaie /ws vers l'API
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws.current = new WebSocket(`${wsProto}//${window.location.host}/ws/${currentClientId}`);
 
-      // LA CORRECTION EST ICI : L'événement devient asynchrone et gère le lancement
       ws.current.onopen = async () => {
         console.log("[WebSocket] Tunnel réseau établi avec succès. Prêt à écouter.");
 
         try {
           console.log("[HTTP POST] Expédition de la matrice d'actifs au cluster...");
-          const response = await fetch('http://localhost:8000/api/v1/simulate', {
+          const response = await fetch('/api/v1/simulate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -36,18 +43,19 @@ export function useRiskSimulation() {
           });
 
           if (!response.ok) {
-            throw new Error(`Rejet du serveur HTTP. Code : ${response.status}`);
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `Rejet du serveur HTTP. Code : ${response.status}`);
           }
           console.log("[HTTP POST] Calcul en cours dans Celery...");
         } catch (error) {
           console.error("[HTTP POST] Faille de transmission :", error);
+          setErrorMessage(error.message);
           setStatus('error');
           if (ws.current) ws.current.close();
         }
       };
 
       ws.current.onmessage = (event) => {
-        console.log("[WebSocket] Flux brut reçu du serveur.");
         try {
           const payload = JSON.parse(event.data);
           if (payload.status === 'success') {
@@ -56,6 +64,7 @@ export function useRiskSimulation() {
             if (ws.current) ws.current.close();
           } else if (payload.status === 'error') {
             console.error("[WebSocket] Erreur d'exécution Celery :", payload.message);
+            setErrorMessage(payload.message || "Erreur d'exécution du calcul.");
             setStatus('error');
             if (ws.current) ws.current.close();
           }
@@ -66,6 +75,7 @@ export function useRiskSimulation() {
 
       ws.current.onerror = (error) => {
         console.error("[WebSocket] Panne du canal asynchrone :", error);
+        setErrorMessage("Connexion WebSocket impossible avec l'API.");
         setStatus('error');
       };
 
@@ -78,7 +88,7 @@ export function useRiskSimulation() {
       setStatus('error');
       if (ws.current) ws.current.close();
     }
-  };
+  }, []);
 
-  return { startSimulation, status, result };
+  return { startSimulation, status, result, errorMessage };
 }

@@ -1,8 +1,6 @@
 services:
   db:
-    build:
-      context: .
-      dockerfile: Dockerfile.db
+    image: pgvector/pgvector:pg16
     container_name: copilot_postgres
     restart: always
     env_file: 
@@ -10,15 +8,12 @@ services:
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      # Airflow et l'App DOIVENT avoir des bases séparées. 
-      # Note : Tu devras configurer ton init.sql pour créer ces deux bases.
       POSTGRES_DB: ${DB_NAME}
-    image: pgvector/pgvector:pg16
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+      - ./database/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
     networks:
       - copilot_network
 
@@ -27,12 +22,13 @@ services:
     container_name: copilot_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - copilot_network
 
   api:
     build: .
+    image: copilotai-app:latest
     container_name: copilot_api
     restart: always
     env_file:
@@ -41,21 +37,22 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     ports:
-      - "8000:8000"
-    # 1. Ajout du flag --reload à la fin de la commande
+      - "127.0.0.1:8000:8000"
+    # Environnement de développement : rechargement automatique du code monté en volume
     command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - db
       - redis
     volumes:
       - shared_shm:/tmp/shared
-      # 2. Synchronisation de ton code local avec le répertoire /app du conteneur
-      - .:/app 
+      # Code local monté dans le conteneur (l'environnement Python est dans /opt/venv)
+      - .:/app
     networks:
       - copilot_network
 
   worker:
     build: .
+    image: copilotai-app:latest
     container_name: copilot_worker
     restart: always
     env_file:
@@ -80,7 +77,7 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true # Obligatoire pour le Hot Reload sous Windows/WSL
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     depends_on:
       - api
     volumes:
@@ -100,8 +97,8 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - _AIRFLOW_DB_UPGRADE=true
       - _AIRFLOW_WWW_USER_CREATE=true
-      - _AIRFLOW_WWW_USER_USERNAME=admin
-      - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_ADMIN_USER:-admin}
+      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_ADMIN_PASSWORD:?Definir AIRFLOW_ADMIN_PASSWORD dans .env (voir .env.example)}
     depends_on:
       - db
     networks:
@@ -122,7 +119,7 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs

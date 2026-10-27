@@ -23,6 +23,10 @@ class DatabaseManager:
             max_size=10,
             command_timeout=60.0
         )
+        # Migration idempotente des bases créées avant l'ajout de la colonne devise
+        from app.services.market_data import ensure_schema
+        async with self.pool.acquire() as conn:
+            await ensure_schema(conn)
 
     async def disconnect(self):
         """Ferme proprement les connexions lors de l'arrêt du serveur."""

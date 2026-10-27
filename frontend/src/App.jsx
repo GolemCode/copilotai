@@ -1,44 +1,66 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRiskSimulation } from './hooks/useRiskSimulation';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
+import { FloatingCopilot } from './components/FloatingCopilot';
+import { PortfolioAllocationChart } from './components/PortfolioAllocationChart';
+import { PortfolioHistoryChart } from './components/PortfolioHistoryChart';
+import { MetricsCards } from './components/MetricsCards';
+import { LookThroughModal } from './components/LookThroughModal';
+import { TransactionModal } from './components/TransactionModal';
+import { ListedAllocationChart } from './components/ListedAllocationChart';
+import { GeographicAllocationChart } from './components/GeographicAllocationChart';
+import { StressTestPositionsTable } from './components/StressTestPositionsTable';
+import { OptimizationPanel } from './components/OptimizationPanel';
+import { getAssetCategory } from './utils/assetClassifier';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
+import './App.css';
 
-const CustomTooltip = ({ active, payload, label }) => {
+const CustomSimulationTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const rawData = payload[0].payload;
     const mainMetrics = payload.filter(entry => ['p1', 'median', 'p99'].includes(entry.dataKey));
 
     return (
-      <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc', padding: '12px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-        <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', color: '#495057', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>
+      <div className="tooltip-container">
+        <p className="tooltip-title">
           Jour J+{label}
         </p>
         {mainMetrics.map((entry, index) => {
-          const dataKey = entry.dataKey; // 'p1', 'median', ou 'p99'
-          
-          // Lecture directe des données absolues et investies transmises par le WebSocket
+          const dataKey = entry.dataKey;
           const finalAbs = rawData[`abs_${dataKey}`];
           const finalInv = rawData[`inv_${dataKey}`];
-          
-          // Diagnostic visuel si le flux rencontre un autre goulot d'étranglement
+
           if (finalAbs === undefined || finalInv === undefined) {
             return (
-              <div key={index} style={{ marginBottom: '8px', color: entry.color, fontSize: '13px' }}>
-                <strong>{entry.name}</strong> : Variable indisponible dans le payload
+              <div key={index} className="tooltip-error" style={{ color: entry.color }}>
+                <strong>{entry.name}</strong> : Données en cours de calcul
               </div>
             );
           }
 
           const netPnl = finalAbs - finalInv;
           const pnlPct = finalInv > 0 ? (netPnl / finalInv) * 100 : 0;
-          const sign = netPnl > 0 ? '+' : '';
-          
+          const sign = netPnl >= 0 ? '+' : '';
+          const pnlClass = netPnl >= 0 ? 'text-success' : 'text-danger';
+
           return (
-            <div key={index} style={{ marginBottom: '8px' }}>
-              <p style={{ margin: 0, color: entry.color, fontSize: '14px', fontWeight: 'bold' }}>
-                {entry.name} : {finalAbs.toFixed(2)} €
+            <div key={index} className="tooltip-metric">
+              <p className="tooltip-metric-main" style={{ color: entry.color }}>
+                {entry.name} : {finalAbs.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
               </p>
-              <p style={{ margin: 0, fontSize: '12px', color: '#6c757d', paddingLeft: '8px' }}>
-                 (Investi : {finalInv.toFixed(2)}€ | PnL : <span style={{color: netPnl >= 0 ? '#2b8a3e' : '#dc3545', fontWeight: 'bold'}}>{sign}{netPnl.toFixed(2)}€ / {sign}{pnlPct.toFixed(2)}%</span>)
+              <p className="tooltip-metric-detail">
+                 (Investi : {finalInv.toFixed(2)}€ | PnL : <span className={`${pnlClass} fw-bold`}>{sign}{netPnl.toFixed(2)}€ / {sign}{pnlPct.toFixed(2)}%</span>)
               </p>
             </div>
           );
@@ -49,551 +71,1280 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-// Découpe le ticker (ex: "MC.PA" devient "MC")
 const getDisplayTicker = (ticker) => ticker.split('.')[0];
 
-// Déduit la place boursière depuis le suffixe Yahoo Finance
 const getExchangeName = (ticker) => {
-  if (ticker.endsWith('.PA')) return 'Paris';
-  if (ticker.endsWith('.DE')) return 'Xetra (ALL)';
+  if (ticker.endsWith('.PA')) return 'Paris (EUR)';
+  if (ticker.endsWith('.DE')) return 'Xetra (EUR)';
   if (ticker.endsWith('.L')) return 'Londres';
   if (ticker.endsWith('.AS')) return 'Amsterdam';
   if (ticker.endsWith('.MI')) return 'Milan';
-  if (ticker.includes('.')) return ticker.split('.')[1]; // Règle de secours
-  return 'US'; // Sans point, c'est par défaut NYSE ou NASDAQ
+  if (ticker.includes('.')) return ticker.split('.')[1];
+  return 'US (USD)';
 };
 
+// Exposition géographique : uniquement les répartitions par pays publiées (JustETF / Yahoo),
+// stockées en base. Un actif sans donnée publiée est compté comme "Non ventilé".
+const getAssetGeographicExposure = (ticker, dynamicGeoData = {}) => {
+  const regions = dynamicGeoData?.[ticker]?.regions;
+  if (regions && Object.keys(regions).length > 0) return regions;
+  return { 'Non ventilé': 100 };
+};
+
+const calculateGeographicBreakdown = (currentPortfolio, breakdownList = [], totalVal = 0, getSharesFn, dynamicGeoData = {}) => {
+  if (!currentPortfolio || currentPortfolio.length === 0 || totalVal <= 0) return [];
+
+  const regionTotals = {
+    'États-Unis': 0,
+    'Europe / France': 0,
+    'Asie & Pacifique': 0,
+    'International / Autres': 0,
+    'Autres pays (non détaillés)': 0,
+    'Non ventilé': 0
+  };
+
+  currentPortfolio.forEach(asset => {
+    const bd = breakdownList.find(b => b.ticker === asset.ticker);
+    const shares = getSharesFn(asset);
+    const posVal = bd?.position_value ?? (bd?.current_price ? shares * bd.current_price : 0);
+    const geoWeights = getAssetGeographicExposure(asset.ticker, dynamicGeoData);
+
+    Object.entries(geoWeights).forEach(([region, pct]) => {
+      const regionVal = posVal * (pct / 100);
+      if (regionTotals[region] !== undefined) {
+        regionTotals[region] += regionVal;
+      } else {
+        regionTotals['International / Autres'] += regionVal;
+      }
+    });
+  });
+
+  return Object.entries(regionTotals)
+    .filter(([, val]) => val > 0)
+    .map(([region, amount]) => ({
+      region,
+      amount,
+      percentage: totalVal > 0 ? (amount / totalVal) * 100 : 0
+    }))
+    .sort((a, b) => b.amount - a.amount);
+};
+
+// Fonctions de calcul comptable sur les opérations (Achats et Ventes, PRU pondéré et quantité nette)
+const getAssetAccounting = (asset) => {
+  if (!asset.transactions || asset.transactions.length === 0) {
+    const fallbackShares = parseFloat(asset.shares) || 0;
+    const fallbackPrice = parseFloat(asset.purchase_price) || 0;
+    return {
+      totalShares: fallbackShares,
+      costBasis: fallbackShares * fallbackPrice,
+      pru: fallbackPrice,
+      realizedPnl: 0
+    };
+  }
+
+  const sortedTxs = [...asset.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let totalShares = 0;
+  let costBasis = 0;
+  let pru = 0;
+  let realizedPnl = 0;
+
+  sortedTxs.forEach((t) => {
+    const s = parseFloat(t.shares) || 0;
+    const p = parseFloat(t.price) || 0;
+    if (t.type === 'sell') {
+      const sold = Math.min(totalShares, s);
+      realizedPnl += sold * (p - pru);
+      totalShares -= sold;
+      costBasis = totalShares * pru;
+    } else {
+      const newTotal = totalShares + s;
+      costBasis += s * p;
+      pru = newTotal > 0 ? costBasis / newTotal : 0;
+      totalShares = newTotal;
+    }
+  });
+
+  return { totalShares, costBasis, pru, realizedPnl };
+};
+
+const getAssetTotalShares = (asset) => getAssetAccounting(asset).totalShares;
+const getAssetCostBasis = (asset) => getAssetAccounting(asset).costBasis;
+const getAssetPru = (asset) => getAssetAccounting(asset).pru;
+
+const UNLISTED_PRESETS = [
+  { ticker: 'SCPI-EUR', name: 'SCPI & Immobilier Papier (Non Coté)', sector: 'Immobilier Privé', asset_class: 'Non Boursier' },
+  { ticker: 'PE-EUR', name: 'Private Equity / FCPR (Non Coté)', sector: 'Capital-Investissement', asset_class: 'Non Boursier' },
+  { ticker: 'CASH-EUR', name: 'Fonds Euros & Liquidités (Livret A / Épargne)', sector: 'Liquidités', asset_class: 'Non Boursier' }
+];
+const NON_LISTED_TICKERS = UNLISTED_PRESETS.map(p => p.ticker);
+
 function App() {
-  const { startSimulation, status, result } = useRiskSimulation();
-  
+  const [activeTab, setActiveTab] = useState('portfolio'); // 'portfolio' | 'simulation'
+  const [selectedLookThroughTicker, setSelectedLookThroughTicker] = useState(null);
+  const [selectedAssetForTransactions, setSelectedAssetForTransactions] = useState(null);
+  const [openMenuTicker, setOpenMenuTicker] = useState(null);
+
+  // Fermeture du menu contextuel 3-points au clic extérieur
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.table-kebab-wrapper')) {
+        setOpenMenuTicker(null);
+      }
+    };
+    if (openMenuTicker) {
+      document.addEventListener('click', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [openMenuTicker]);
+
+  const { startSimulation, status, result, errorMessage: simulationError } = useRiskSimulation();
+
   const [availableAssets, setAvailableAssets] = useState([]);
+  // Portefeuille et opérations enregistrés en base (PostgreSQL) via l'API
   const [portfolio, setPortfolio] = useState([]);
+  const [portfolioError, setPortfolioError] = useState(null);
+
+  const applyPortfolioResponse = useCallback(async (res) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const message = data.detail || "Opération refusée par le serveur.";
+      setPortfolioError(message);
+      alert(message);
+      return false;
+    }
+    setPortfolioError(null);
+    setPortfolio(data.assets || []);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/v1/portfolio')
+      .then(applyPortfolioResponse)
+      .catch((err) => {
+        console.error("Erreur chargement du portefeuille :", err);
+        setPortfolioError("Portefeuille indisponible (API injoignable).");
+      });
+  }, [applyPortfolioResponse]);
+
+  // Incrémenté après une mise à jour des cours : relance les calculs dépendant des données de marché
+  const [dataRefreshTick, setDataRefreshTick] = useState(0);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [timeHorizon, setTimeHorizon] = useState(252);
+  const [historicalYears, setHistoricalYears] = useState(3);
+  const [benchmarkTicker, setBenchmarkTicker] = useState('SPY');
 
-  // --- ÉTATS DE LA STRATÉGIE ---
+  // État de l'Assistant Copilot (Bulle flottante & Fenêtre modale)
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isCopilotExpanded, setIsCopilotExpanded] = useState(false);
+
+  // Stratégies stochastiques (Buy & Hold et Versements programmés DCA)
   const [strategyType, setStrategyType] = useState('buy_and_hold');
-  
-  // Paramètres DCA
-  const [dcaVolume, setDcaVolume] = useState(1);
+  const [dcaAmount, setDcaAmount] = useState(200);
   const [dcaFrequency, setDcaFrequency] = useState(30);
-  
-  // Paramètres Trigger (Achat/Vente sur seuil)
-  const [triggerAction, setTriggerAction] = useState('sell'); // 'buy' ou 'sell'
-  const [triggerPct, setTriggerPct] = useState(5);
-  const [triggerWindow, setTriggerWindow] = useState(5); // en jours
 
+
+  // 1. Chargement de l'univers d'actifs depuis l'API
   useEffect(() => {
     const fetchAssetsFromServer = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/v1/assets');
+        const response = await fetch('/api/v1/assets');
         if (response.ok) {
           const data = await response.json();
-          setAvailableAssets(data);
-        } else {
-          console.error("Erreur protocole : Réponse serveur incorrecte");
+          setAvailableAssets([...data, ...UNLISTED_PRESETS]);
         }
       } catch (error) {
-        console.error("Erreur réseau lors du chargement des actifs :", error);
+        console.error("Erreur chargement des actifs :", error);
       }
     };
-
     fetchAssetsFromServer();
   }, []);
 
-  const popularTickers = ['SPY', 'QQQ', 'CW8.PA', 'GLD', 'AGG']; 
+  // Chaque calcul serveur est décrit par une "requête" dérivée de l'état (chaîne JSON) :
+  // l'effet ne se relance que si elle change, et l'affichage se déduit de la dernière réponse reçue.
 
-  const filteredSuggestions = searchQuery
-    ? availableAssets
-        .filter(asset => {
-          const query = searchQuery.toLowerCase();
-          const rawTicker = asset.ticker.toLowerCase();
-          const cleanTicker = rawTicker.split('.')[0];
-          const assetName = asset.name.toLowerCase();
-          
-          const isMatch = rawTicker.startsWith(query) || cleanTicker.startsWith(query) || assetName.includes(query);
-          const notInPortfolio = !portfolio.some(p => p.ticker === asset.ticker);
-          
-          return isMatch && notInPortfolio;
-        })
-        .sort((a, b) => {
-          const query = searchQuery.toLowerCase();
-          
-          // Nettoyage des données pour la comparaison
-          const aCleanTicker = a.ticker.split('.')[0].toLowerCase();
-          const bCleanTicker = b.ticker.split('.')[0].toLowerCase();
-          const aName = a.name.toLowerCase();
-          const bName = b.name.toLowerCase();
+  // 2. Métriques de risque ex-ante de la composition actuelle (lignes cotées détenues)
+  const metricsRequest = useMemo(() => {
+    const assets = portfolio
+      .filter(a => !NON_LISTED_TICKERS.includes(a.ticker))
+      .map(a => ({ ticker: a.ticker, shares: getAssetTotalShares(a) }))
+      .filter(a => a.shares > 0);
+    return assets.length > 0
+      ? JSON.stringify({ assets, benchmark_ticker: benchmarkTicker, years: historicalYears, refresh: dataRefreshTick })
+      : null;
+  }, [portfolio, benchmarkTicker, historicalYears, dataRefreshTick]);
+  const [metricsState, setMetricsState] = useState({ request: null, data: null });
 
-          // Fonction d'évaluation de la pertinence (Score le plus bas = meilleur)
-          const getScore = (cleanTicker, name) => {
-            if (cleanTicker === query) return 1; // Correspondance exacte du ticker
-            if (cleanTicker.startsWith(query)) return 2; // Le ticker commence par la requête
-            if (name.startsWith(query)) return 3; // Le nom de l'entreprise commence par la requête
-            return 4; // La requête est contenue au milieu du nom ou du ticker
-          };
+  useEffect(() => {
+    if (!metricsRequest) return undefined;
+    let cancelled = false;
+    const { assets, benchmark_ticker, years } = JSON.parse(metricsRequest);
+    fetch('/api/v1/portfolio/metrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assets, benchmark_ticker, years })
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (!cancelled) setMetricsState({ request: metricsRequest, data }); })
+      .catch(err => {
+        console.error("Erreur calcul métriques :", err);
+        if (!cancelled) setMetricsState({ request: metricsRequest, data: null });
+      });
+    return () => { cancelled = true; };
+  }, [metricsRequest]);
+  const metricsData = metricsRequest ? metricsState.data : null;
+  const isMetricsLoading = Boolean(metricsRequest) && metricsState.request !== metricsRequest;
 
-          const scoreA = getScore(aCleanTicker, aName);
-          const scoreB = getScore(bCleanTicker, bName);
+  // 3. Performance réelle reconstituée à partir des transactions enregistrées (TWR, XIRR, benchmark)
+  const performanceRequest = useMemo(() => (
+    portfolio.length > 0
+      ? JSON.stringify({
+        benchmark: benchmarkTicker,
+        refresh: dataRefreshTick,
+        transactions: portfolio.map(a => [a.ticker, (a.transactions || []).map(t => t.id)])
+      })
+      : null
+  ), [portfolio, benchmarkTicker, dataRefreshTick]);
+  const [performanceState, setPerformanceState] = useState({ request: null, data: null });
 
-          // Si les scores sont différents, le plus pertinent passe en premier
-          if (scoreA !== scoreB) {
-            return scoreA - scoreB;
-          }
-          
-          // En cas d'égalité de score, on conserve le tri alphabétique naturel
-          return a.ticker.localeCompare(b.ticker);
-        })
-        .slice(0, 50) 
-    : isSearchFocused 
-      ? availableAssets
-          .filter(asset => 
-            popularTickers.includes(asset.ticker) &&
-            !portfolio.some(p => p.ticker === asset.ticker)
-          )
-      : [];
-  
-  const handleAddAsset = (ticker) => {
-    if (portfolio.some(asset => asset.ticker === ticker)) {
-      alert("Cet actif est déjà présent dans votre portefeuille.");
+  useEffect(() => {
+    if (!performanceRequest) return undefined;
+    let cancelled = false;
+    const { benchmark } = JSON.parse(performanceRequest);
+    fetch(`/api/v1/portfolio/performance?benchmark=${encodeURIComponent(benchmark)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (!cancelled) setPerformanceState({ request: performanceRequest, data }); })
+      .catch(err => {
+        console.error("Erreur calcul de la performance réelle :", err);
+        if (!cancelled) setPerformanceState({ request: performanceRequest, data: null });
+      });
+    return () => { cancelled = true; };
+  }, [performanceRequest]);
+  const performanceData = performanceRequest ? performanceState.data : null;
+
+  // 4. Exposition géographique (répartitions par pays stockées en base)
+  const geoRequest = useMemo(() => {
+    const tickers = [...new Set(portfolio.map(a => a.ticker).filter(Boolean))].sort();
+    return tickers.length > 0 ? JSON.stringify(tickers) : null;
+  }, [portfolio]);
+  const [geoState, setGeoState] = useState({ request: null, data: {} });
+
+  useEffect(() => {
+    if (!geoRequest) return undefined;
+    let cancelled = false;
+    fetch('/api/v1/portfolio/geographic-exposure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tickers: JSON.parse(geoRequest) })
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (!cancelled) setGeoState({ request: geoRequest, data: data?.assets || {} }); })
+      .catch(err => {
+        console.warn("Erreur récupération exposition géographique :", err);
+        if (!cancelled) setGeoState({ request: geoRequest, data: {} });
+      });
+    return () => { cancelled = true; };
+  }, [geoRequest]);
+  const geoExposureData = geoRequest ? geoState.data : {};
+  const isGeoLoading = Boolean(geoRequest) && geoState.request !== geoRequest;
+
+
+  // Scraping & synchronisation des données réelles
+  const [isScrapingInProgress, setIsScrapingInProgress] = useState(false);
+  const [isAutoScrapingAsset, setIsAutoScrapingAsset] = useState(false);
+  const [scrapingFeedback, setScrapingFeedback] = useState(null);
+
+  const handleTriggerScraping = async () => {
+    setIsScrapingInProgress(true);
+    setScrapingFeedback("Scraping EOD en cours via le pipeline...");
+    try {
+      const res = await fetch('/api/v1/pipeline/daily-market', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setScrapingFeedback(data.message || "Cotations actualisées avec succès !");
+        setDataRefreshTick(tick => tick + 1);
+      } else {
+        setScrapingFeedback("Erreur lors de l'exécution du pipeline.");
+      }
+    } catch (e) {
+      console.error(e);
+      setScrapingFeedback("Erreur réseau lors du scraping.");
+    } finally {
+      setIsScrapingInProgress(false);
+      setTimeout(() => setScrapingFeedback(null), 5000);
+    }
+  };
+
+  const handleAutoScrapeAndAdd = async (rawTicker) => {
+    const cleanTicker = rawTicker.trim().toUpperCase();
+    if (!cleanTicker) return;
+    if (portfolio.some(p => p.ticker === cleanTicker)) {
+      alert(`L'actif ${cleanTicker} est déjà présent dans votre portefeuille.`);
       return;
     }
-    setPortfolio([...portfolio, { ticker: ticker, shares: 1 }]);
-    setSearchQuery(''); 
+
+    setIsAutoScrapingAsset(true);
+    try {
+      const res = await fetch(`/api/v1/assets/auto-scrape?ticker=${encodeURIComponent(cleanTicker)}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const assetData = await res.json();
+        setAvailableAssets(prev => {
+          if (prev.some(a => a.ticker === assetData.ticker)) return prev;
+          return [
+            {
+              ticker: assetData.ticker,
+              name: assetData.name,
+              sector: assetData.sector,
+              asset_class: assetData.asset_class
+            },
+            ...prev
+          ];
+        });
+
+        const today = new Date().toISOString().split('T')[0];
+        await postTransaction(assetData.ticker, { date: today, shares: 1, price: null, type: 'buy' });
+        setSearchQuery('');
+        setIsSearchFocused(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Échec du scraping direct pour ${cleanTicker} : ${err.detail || 'Actif introuvable sur les marchés'}`);
+      }
+    } catch (err) {
+      console.error("Erreur auto-scrape :", err);
+      alert(`Erreur de connexion lors du scraping de ${cleanTicker}`);
+    } finally {
+      setIsAutoScrapingAsset(false);
+    }
+  };
+
+  const [popularTickers, setPopularTickers] = useState([
+    'CW8.PA', 'WPEA.PA', 'PE500.PA', 'SPY', 'PUST.PA', 'QQQ',
+    'XEON.DE', 'ETZ.PA', 'CAC.PA', 'PAEEM.PA', 'GLD', 'TLT', 'SCPI-EUR', 'PE-EUR'
+  ]);
+
+  useEffect(() => {
+    fetch('/api/v1/etfs/popular?quick_only=true')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const apiTickers = data.map(d => d.ticker).filter(Boolean);
+          setPopularTickers([...apiTickers, 'SCPI-EUR', 'PE-EUR']);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const filteredSuggestions = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return isSearchFocused
+        ? availableAssets.filter(asset => popularTickers.includes(asset.ticker) && !portfolio.some(p => p.ticker === asset.ticker))
+        : [];
+    }
+
+    const query = searchQuery.trim().toLowerCase();
+    const scoredCandidates = [];
+
+    for (const asset of availableAssets) {
+      if (portfolio.some(p => p.ticker === asset.ticker)) continue;
+
+      const rawTicker = (asset.ticker || '').toLowerCase();
+      const baseTicker = rawTicker.split('.')[0];
+      const assetName = (asset.name || '').toLowerCase();
+      const sector = (asset.sector || '').toLowerCase();
+
+      let score = 0;
+
+      // Tier 1 : Correspondance exacte du symbole ou du symbole racine (ex: SPY)
+      if (rawTicker === query || baseTicker === query) {
+        score = 1000;
+      }
+      // Tier 2 : Le symbole boursier commence par la requête (priorité aux tickers courts)
+      else if (rawTicker.startsWith(query) || baseTicker.startsWith(query)) {
+        score = 800 - rawTicker.length;
+      }
+      // Tier 3 : Le symbole boursier contient la requête
+      else if (rawTicker.includes(query) || baseTicker.includes(query)) {
+        score = 600 - rawTicker.length;
+      }
+      // Tier 4 : Le nom officiel commence par la requête ou contient un mot commençant par celle-ci
+      else if (assetName.startsWith(query) || assetName.split(/[\s\-()]+/).some(w => w.startsWith(query))) {
+        score = 400;
+      }
+      // Tier 5 : Le nom ou le secteur contient la chaîne recherchée
+      else if (assetName.includes(query) || sector.includes(query)) {
+        score = 200;
+      }
+
+      if (score > 0) {
+        scoredCandidates.push({ asset, score });
+      }
+    }
+
+    scoredCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.asset.ticker.localeCompare(b.asset.ticker);
+    });
+
+    return scoredCandidates.slice(0, 30).map(c => c.asset);
+  }, [searchQuery, isSearchFocused, availableAssets, portfolio, popularTickers]);
+
+  const postTransaction = async (ticker, tx) => {
+    const res = await fetch('/api/v1/portfolio/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker,
+        date: tx.date,
+        type: tx.type,
+        shares: tx.shares,
+        // null : le serveur enregistre le cours de clôture du jour de l'opération
+        price: tx.price === '' || tx.price === null || tx.price === undefined ? null : tx.price
+      })
+    });
+    return applyPortfolioResponse(res);
+  };
+
+  const handleAddAsset = async (ticker) => {
+    if (portfolio.some(asset => asset.ticker === ticker)) return;
+    setSearchQuery('');
     setIsSearchFocused(false);
+    const cat = getAssetCategory(ticker);
+    if (cat.type === 'non_boursier') {
+      // Pas de cours de marché : l'utilisateur saisit lui-même la valeur investie
+      setSelectedAssetForTransactions(ticker);
+      return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    await postTransaction(ticker, { date: today, shares: 1, price: null, type: 'buy' });
   };
 
-  const handleRemoveAsset = (tickerToRemove) => {
-    setPortfolio(portfolio.filter(asset => asset.ticker !== tickerToRemove));
+  const handleRemoveAsset = async (tickerToRemove) => {
+    const res = await fetch(`/api/v1/portfolio/assets/${encodeURIComponent(tickerToRemove)}`, { method: 'DELETE' });
+    await applyPortfolioResponse(res);
   };
 
-  const handleUpdateShares = (ticker, newShares) => {
-    setPortfolio(portfolio.map(asset => 
-      asset.ticker === ticker ? { ...asset, shares: newShares } : asset
-    ));
+  const handleAddTransaction = async (ticker, newTx) => {
+    await postTransaction(ticker, newTx);
   };
 
-  const handleSimulate = () => {
-    if (portfolio.length === 0) {
-      alert("Votre portefeuille doit contenir au moins un actif.");
+  const handleRemoveTransaction = async (ticker, txId) => {
+    const res = await fetch(`/api/v1/portfolio/transactions/${txId}`, { method: 'DELETE' });
+    await applyPortfolioResponse(res);
+  };
+
+  const handleSimulate = useCallback(() => {
+    if (!portfolio || portfolio.length === 0) return;
+
+    const simAssets = portfolio
+      .filter(a => !NON_LISTED_TICKERS.includes(a.ticker))
+      .map(asset => ({
+        ticker: asset.ticker,
+        shares: getAssetTotalShares(asset)
+      }))
+      .filter(a => a.shares > 0); // une position entièrement vendue n'est plus simulée
+
+    if (simAssets.length === 0) {
+      alert("Veuillez inclure au moins un actif boursier (avec cours de marché) pour lancer le Stress Test Monte Carlo.");
       return;
     }
 
-    // Calcul du nombre total d'actions initiales (pour déduire le prix unitaire)
-    const totalShares = portfolio.reduce((acc, curr) => acc + (parseFloat(curr.shares) || 1), 0);
-
-    // Construction du dictionnaire de stratégie avec le volume initial
-    let strategyPayload = { 
-      type: strategyType,
-      initial_shares: totalShares // <--- INJECTION DU VOLUME DE DÉPART
-    };
-    
+    const strategyPayload = { type: strategyType };
     if (strategyType === 'dca') {
-      strategyPayload.params = { volume: dcaVolume, frequency_days: dcaFrequency };
+      // Montant fixe en euros investi dans le même panier d'actifs à chaque échéance
+      strategyPayload.params = { amount_eur: dcaAmount, frequency_days: dcaFrequency };
     }
 
     startSimulation({
-      assets: portfolio.map(asset => ({
-        ticker: asset.ticker,
-        shares: parseFloat(asset.shares) || 1
-      })),
+      assets: simAssets,
       time_horizon_days: timeHorizon,
       num_paths: 10000,
-      strategy: strategyPayload // <--- Injection de la nouvelle donnée
+      strategy: strategyPayload
     });
-  };
+  }, [portfolio, strategyType, dcaAmount, dcaFrequency, timeHorizon, startSimulation]);
 
-  // Extraction des données scalaires
+
+
   const quantitativeData = result?.data || result;
   const histogramData = quantitativeData?.histogram;
+  // VaR et ES sont renvoyées par le backend comme des PERTES (montant positif = perte en €)
   const var95 = quantitativeData?.value_at_risk_95;
   const cvar95 = quantitativeData?.expected_shortfall_95;
-  
-  // Transformation du format JSON "representative_paths" en tableau structuré pour Recharts
-  const chartData = [];
-  if (quantitativeData?.representative_paths) {
-    const { worst, median, best } = quantitativeData.representative_paths;
-    const daysCount = median.length;
-    for (let i = 0; i < daysCount; i++) {
-      chartData.push({
-        day: i,
-        worst: worst[i],
-        median: median[i],
-        best: best[i]
-      });
-    }
-  }
+  // Sur l'axe du PnL, le seuil VaR se situe à -VaR ; l'axe étant catégoriel, on se cale sur la classe la plus proche
+  const varPnlThreshold = var95 != null ? -var95 : null;
+  const varBinPnl = varPnlThreshold != null && histogramData?.length
+    ? histogramData.reduce((best, b) => (Math.abs(b.pnl - varPnlThreshold) < Math.abs(best.pnl - varPnlThreshold) ? b : best)).pnl
+    : null;
 
-  const dynamicInitialInvestment = chartData.length > 0 ? chartData[0].median : 0;
+  // Contexte dynamique et complet du portefeuille transmis au Copilot AI
+  const portfolioContext = useMemo(() => {
+    if (!portfolio || portfolio.length === 0) return null;
 
-  const finalCapitalization = quantitativeData?.paths?.length > 0 
-    ? quantitativeData.paths.at(-1).median 
-    : 0;
+    const totalCostBasis = portfolio.reduce((acc, a) => acc + getAssetCostBasis(a), 0);
+    const totalCurrentValue = portfolio.reduce((acc, a) => {
+      const bd = (metricsData?.asset_breakdown || []).find(b => b.ticker === a.ticker);
+      const shares = getAssetTotalShares(a);
+      if (bd?.position_value !== undefined) return acc + bd.position_value;
+      if (bd?.current_price !== undefined) return acc + (shares * bd.current_price);
+      return acc + getAssetCostBasis(a);
+    }, 0);
+
+    let fnbVal = 0;
+    let stockVal = 0;
+    let unlistedVal = 0;
+
+    const positions = portfolio.map(a => {
+      const bd = (metricsData?.asset_breakdown || []).find(b => b.ticker === a.ticker);
+      const shares = getAssetTotalShares(a);
+      const pru = getAssetPru(a);
+      const assetDetails = availableAssets.find(item => item.ticker === a.ticker);
+      const cat = getAssetCategory(a.ticker, assetDetails);
+      const currentPrice = bd?.current_price ?? (pru > 0 ? pru : null);
+      const posVal = bd?.position_value ?? (shares > 0 && currentPrice != null ? shares * currentPrice : getAssetCostBasis(a));
+      const weightPct = totalCurrentValue > 0 ? (posVal / totalCurrentValue) * 100 : 0;
+
+      if (cat.type === 'fnb') fnbVal += posVal;
+      else if (cat.type === 'action') stockVal += posVal;
+      else unlistedVal += posVal;
+
+      return {
+        ticker: a.ticker,
+        name: assetDetails ? assetDetails.name : a.ticker,
+        shares,
+        pru,
+        current_price: currentPrice,
+        value_eur: posVal,
+        weight_pct: weightPct,
+        category: cat.shortLabel || cat.type
+      };
+    });
+
+    return {
+      total_value: totalCurrentValue,
+      cost_basis: totalCostBasis,
+      positions,
+      metrics: {
+        sharpe_ratio: metricsData?.summary?.sharpe_ratio !== undefined ? metricsData.summary.sharpe_ratio.toFixed(2) : 'Calcul en cours',
+        volatility_pct: metricsData?.summary?.annualized_volatility_pct !== undefined ? metricsData.summary.annualized_volatility_pct.toFixed(2) : (metricsData?.summary?.annualized_volatility !== undefined ? (metricsData.summary.annualized_volatility * 100).toFixed(2) : 'N/A'),
+        annualized_return_pct: metricsData?.summary?.annualized_return_pct !== undefined ? metricsData.summary.annualized_return_pct.toFixed(2) : (metricsData?.summary?.annualized_return !== undefined ? (metricsData.summary.annualized_return * 100).toFixed(2) : 'N/A'),
+        max_drawdown_pct: metricsData?.summary?.max_drawdown_pct !== undefined ? metricsData.summary.max_drawdown_pct.toFixed(2) : (metricsData?.summary?.max_drawdown !== undefined ? (metricsData.summary.max_drawdown * 100).toFixed(2) : 'N/A')
+      },
+      allocation: {
+        fnb_pct: totalCurrentValue > 0 ? (fnbVal / totalCurrentValue) * 100 : 0,
+        stocks_pct: totalCurrentValue > 0 ? (stockVal / totalCurrentValue) * 100 : 0,
+        unlisted_pct: totalCurrentValue > 0 ? (unlistedVal / totalCurrentValue) * 100 : 0
+      }
+    };
+  }, [portfolio, metricsData, availableAssets]);
 
   return (
-    <div style={{ padding: '2rem', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
-      <h1 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>
-        Dashboard Quantitatif - Analyse de Risque
-      </h1>
+    <div className="app-container">
+      {/* Colonne Principale */}
+      <div className="main-column">
+        <header className="app-header">
+          <div>
+            <h1 className="main-title">Copilot AI - Analyse Quantitative & Portefeuille</h1>
+            <p className="main-subtitle">Plateforme institutionnelle d'allocation d'actifs, métriques de risque et RAG génératif</p>
+          </div>
 
-      <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
-        
-        {/* Conteneur relatif OBLIGATOIRE pour ancrer le menu déroulant */}
-        <div style={{ marginBottom: '25px', position: 'relative' }}>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-            Rechercher et ajouter un actif (Actions / ETF) :
-          </label>
-          <input
-            type="text"
-            placeholder="Rechercher un ticker (ex: AAPL, CW8)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setIsSearchFocused(true)}
-            onClick={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
-            style={{ width: '100%', padding: '10px', fontSize: '16px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-          
-          {isSearchFocused && (
-            <div style={{ 
-              position: 'absolute', top: '100%', left: 0, right: 0, 
-              backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '0 0 4px 4px', 
-              zIndex: 9999, maxHeight: '250px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' 
-            }}>
-              
-              {!searchQuery && filteredSuggestions.length > 0 && (
-                <div style={{ padding: '8px 15px', fontSize: '12px', color: '#868e96', backgroundColor: '#f8f9fa', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                  ETF Populaires
-                </div>
-              )}
+          {/* Sélecteur d'onglets */}
+          <nav className="tab-navigation">
+            <div className="tab-buttons-group">
+              <button
+                className={`tab-btn ${activeTab === 'portfolio' ? 'active' : ''}`}
+                onClick={() => setActiveTab('portfolio')}
+              >
+                📊 Portefeuille & Allocation
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'simulation' ? 'active' : ''}`}
+                onClick={() => setActiveTab('simulation')}
+              >
+                🎲 Stress Test & Monte Carlo
+              </button>
+            </div>
 
-              {filteredSuggestions.length > 0 ? (
-                filteredSuggestions.map(asset => (
-                  <div 
-                    key={asset.ticker}
+            <button
+              type="button"
+              className={`btn-header-copilot-trigger ${isCopilotOpen ? 'active' : ''}`}
+              onClick={() => setIsCopilotOpen(!isCopilotOpen)}
+              title="Ouvrir le Copilot IA"
+            >
+              <span className="copilot-sparkle-icon">✨</span>
+              <span>Copilot IA</span>
+              <span className="copilot-header-badge">RAG</span>
+            </button>
+          </nav>
+        </header>
+
+        {/* Section 1 : Sélecteur et Recherche d'Actifs */}
+        <div className="dashboard-panel search-only-panel">
+          <div className="search-container">
+            <div className="search-header-row">
+              <label className="form-label">
+                Ajouter un actif au portefeuille (Actions, ETF mondiaux, CAC 40, S&P 500) :
+              </label>
+              <div className="pipeline-sync-badge">
+                <span className="pipeline-pulse-dot"></span>
+                <span className="sync-text">{availableAssets.length} Actifs réels · Airflow DAG actif</span>
+                <button
+                  type="button"
+                  className={`btn-sync-refresh ${isScrapingInProgress ? 'loading' : ''}`}
+                  onClick={handleTriggerScraping}
+                  disabled={isScrapingInProgress}
+                  title="Déclencher le scraping nocturne EOD et le recalcul quantitatif de covariance"
+                >
+                  {isScrapingInProgress ? '⟳ Scraping en cours...' : '⟳ Actualiser les cours'}
+                </button>
+                {scrapingFeedback && <span className="sync-feedback text-success">{scrapingFeedback}</span>}
+              </div>
+            </div>
+            <input
+              type="text"
+              placeholder="Rechercher par symbole ou nom (ex: CW8, SPY, QQQ, TotalEnergies, Air Liquide)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onClick={() => setIsSearchFocused(true)}
+              onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+              className="form-input"
+            />
+
+            {isSearchFocused && (
+              <div className="search-dropdown">
+                {!searchQuery && filteredSuggestions.length > 0 && (
+                  <div className="dropdown-category">ETF & Actifs Populaires ({availableAssets.length} actifs réels disponibles)</div>
+                )}
+                {searchQuery.trim() && !availableAssets.some(a => a.ticker.toLowerCase() === searchQuery.trim().toLowerCase()) && (
+                  <div
                     onMouseDown={(e) => {
-                      e.preventDefault(); // Empêche la perte de focus qui détruirait le menu avant le clic
-                      handleAddAsset(asset.ticker);
+                      e.preventDefault();
+                      if (!isAutoScrapingAsset) handleAutoScrapeAndAdd(searchQuery);
                     }}
-                    style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f3f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                    className="dropdown-item"
+                    title="Télécharge la fiche et 3 ans de cours depuis Yahoo Finance, puis ajoute la ligne au portefeuille"
                   >
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <strong style={{ display: 'inline-block', width: '70px' }}>
-                        {getDisplayTicker(asset.ticker)}
-                      </strong>
-                      <span style={{ fontSize: '11px', color: '#868e96', backgroundColor: '#f1f3f5', padding: '2px 6px', borderRadius: '4px', marginRight: '10px' }}>
-                        {getExchangeName(asset.ticker)}
-                      </span>
-                      <span style={{ color: '#495057', fontSize: '14px' }}>
-                        {asset.name}
+                    <div className="item-details">
+                      <strong className="item-ticker">{searchQuery.trim().toUpperCase()}</strong>
+                      <span className="item-name">
+                        {isAutoScrapingAsset ? 'Import en cours depuis Yahoo Finance...' : 'Absent de la base : importer depuis Yahoo Finance'}
                       </span>
                     </div>
-                    <span style={{ fontSize: '12px', color: '#0b7285', backgroundColor: '#e3fafc', padding: '2px 6px', borderRadius: '10px' }}>Ajouter</span>
+                    <span className="badge-add">+ Importer</span>
                   </div>
-                ))
-              ) : (
-                <div style={{ padding: '15px', textAlign: 'center', color: '#868e96', fontStyle: 'italic' }}>
-                  {availableAssets.length === 0 
-                    ? "Chargement des actifs depuis l'API..." 
-                    : "Aucun actif trouvé pour cette recherche."}
+                )}
+                {filteredSuggestions.length > 0 ? (
+                  filteredSuggestions.map(asset => (
+                    <div
+                      key={asset.ticker}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleAddAsset(asset.ticker);
+                      }}
+                      className="dropdown-item"
+                    >
+                      <div className="item-details">
+                        <strong className="item-ticker">{getDisplayTicker(asset.ticker)}</strong>
+                        <span className="badge-exchange">{getExchangeName(asset.ticker)}</span>
+                        <span className={`badge-google-type-small ${getAssetCategory(asset.ticker, asset).badgeClass}`}>
+                          {getAssetCategory(asset.ticker, asset).shortLabel}
+                        </span>
+                        <span className="item-name">{asset.name}</span>
+                      </div>
+                      <span className="badge-add">+ Ajouter</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="dropdown-empty">
+                    {searchQuery
+                      ? `Aucun actif correspondant dans l'univers vérifié (${availableAssets.length} actifs disponibles).`
+                      : "Chargement des actifs..."}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* --- ONGLET 1 : PORTEFEUILLE & ALLOCATION --- */}
+        {activeTab === 'portfolio' && (() => {
+          const totalCostBasis = portfolio.reduce((acc, a) => {
+            return acc + getAssetCostBasis(a);
+          }, 0);
+
+          const totalCurrentValue = portfolio.reduce((acc, a) => {
+            const bd = (metricsData?.asset_breakdown || []).find(b => b.ticker === a.ticker);
+            const shares = getAssetTotalShares(a);
+            if (bd?.position_value !== undefined) return acc + bd.position_value;
+            if (bd?.current_price !== undefined) return acc + (shares * bd.current_price);
+            return acc + getAssetCostBasis(a);
+          }, 0);
+
+          const totalGainLoss = totalCostBasis > 0 ? (totalCurrentValue - totalCostBasis) : 0;
+          const totalGainLossPct = totalCostBasis > 0 ? (totalGainLoss / totalCostBasis) * 100 : 0;
+
+          let fnbVal = 0;
+          let stockVal = 0;
+          let unlistedVal = 0;
+
+          portfolio.forEach(a => {
+            const bd = (metricsData?.asset_breakdown || []).find(b => b.ticker === a.ticker);
+            const shares = getAssetTotalShares(a);
+            const posVal = bd?.position_value ?? (bd?.current_price ? shares * bd.current_price : getAssetCostBasis(a));
+            const assetDetails = availableAssets.find(item => item.ticker === a.ticker);
+            const cat = getAssetCategory(a.ticker, assetDetails);
+
+            if (cat.type === 'fnb') {
+              fnbVal += posVal;
+            } else if (cat.type === 'action') {
+              stockVal += posVal;
+            } else {
+              unlistedVal += posVal;
+            }
+          });
+
+          const geoBreakdown = calculateGeographicBreakdown(
+            portfolio,
+            metricsData?.asset_breakdown,
+            totalCurrentValue,
+            getAssetTotalShares,
+            geoExposureData
+          );
+
+          const consolidatedBreakdown = portfolio.map(asset => {
+            const bd = (metricsData?.asset_breakdown || []).find(b => b.ticker === asset.ticker);
+            const shares = getAssetTotalShares(asset);
+            const posVal = bd?.position_value ?? (bd?.current_price ? shares * bd.current_price : getAssetCostBasis(asset));
+            const weightPct = totalCurrentValue > 0 ? (posVal / totalCurrentValue) * 100 : 0;
+            return {
+              ticker: asset.ticker,
+              position_value: posVal,
+              weight_pct: weightPct
+            };
+          });
+
+          return (
+            <div className="tab-content">
+              {/* Grille de KPIs Financiers Épurée (Valorisation, Rendement CAGR, Sharpe, Volatilité) */}
+              <MetricsCards
+                summary={metricsData?.summary}
+                performance={performanceData?.summary}
+                totalCurrentValue={totalCurrentValue}
+                totalCostBasis={totalCostBasis}
+              />
+
+              {/* Tableau des Positions (Google Finance Style) */}
+              <div className="positions-card">
+                <div className="chart-header-row">
+                  <div>
+                    <h4 className="chart-title">Détail des Positions & Valorisation</h4>
+                  </div>
+                  {isMetricsLoading && (
+                    <span className="metrics-loading-indicator">Actualisation des cours...</span>
+                  )}
+                </div>
+
+                <div className="table-wrapper">
+                  <table className="positions-table">
+                    <thead>
+                      <tr>
+                        <th>Actif</th>
+                        <th className="center">Quantité</th>
+                        <th className="right">Prix d'achat (PRU)</th>
+                        <th className="right">Cours actuel</th>
+                        <th className="right">Valeur totale</th>
+                        <th className="right">Plus/Moins-value</th>
+                        <th className="right">Poids</th>
+                        <th className="center">Mode Look-Through</th>
+                        <th className="center" style={{ width: '48px' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {portfolio.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="center text-muted" style={{ padding: '2rem' }}>
+                            {portfolioError || "Aucun actif dans le portefeuille. Utilisez la barre de recherche ci-dessus pour ajouter des ETFs ou actions."}
+                          </td>
+                        </tr>
+                      ) : (
+                        portfolio.map((asset, idx) => {
+                          const assetDetails = availableAssets.find(a => a.ticker === asset.ticker);
+                          const fullName = assetDetails ? assetDetails.name : asset.ticker;
+                          const breakdown = (metricsData?.asset_breakdown || []).find(b => b.ticker === asset.ticker);
+
+                          const shares = getAssetTotalShares(asset);
+                          const costBasis = getAssetCostBasis(asset);
+                          const pru = getAssetPru(asset);
+                          const currentPrice = breakdown?.current_price;
+                          const positionValue = breakdown?.position_value ?? (currentPrice ? shares * currentPrice : undefined);
+
+                          const hasCostBasis = costBasis > 0;
+                          const hasValuation = positionValue !== undefined;
+                          const gainLoss = hasCostBasis && hasValuation ? (positionValue - costBasis) : null;
+                          const gainLossPct = hasCostBasis && costBasis > 0 && gainLoss !== null ? (gainLoss / costBasis) * 100 : null;
+
+                          return (
+                            <tr key={asset.ticker}>
+                              {/* 1. Actif & Marché */}
+                              <td>
+                                <div className="table-asset-cell">
+                                  <div className="table-asset-header">
+                                    <strong className="table-asset-ticker">{getDisplayTicker(asset.ticker)}</strong>
+                                    <span className="badge-exchange">{getExchangeName(asset.ticker)}</span>
+                                  </div>
+                                  <span className="table-asset-name" title={fullName}>{fullName}</span>
+                                </div>
+                              </td>
+
+                               {/* 2. Quantité (Design Image 1 : 45 ✎ cliquable pour ouvrir la modale) */}
+                              <td className="center">
+                                <button
+                                  type="button"
+                                  className="btn-quantity-cell"
+                                  onClick={() => setSelectedAssetForTransactions(asset.ticker)}
+                                  title="Gérer les opérations : ajouter un achat ou enregistrer une vente"
+                                >
+                                  <span className="quantity-num">{shares}</span>
+                                  <span className="pencil-icon-wrapper" aria-hidden="true">
+                                    <svg className="pencil-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                                    </svg>
+                                  </span>
+                                </button>
+                              </td>
+
+                              {/* 3. Prix d'achat (PRU) moyen pondéré */}
+                              <td className="right">
+                                <span className="pru-val">
+                                  {pru > 0
+                                    ? `${pru.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                                    : '—'}
+                                </span>
+                              </td>
+
+                              {/* 4. Cours actuel */}
+                              <td className="right">
+                                <span className="current-price-val">
+                                  {currentPrice !== undefined
+                                    ? `${currentPrice.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                                    : '—'}
+                                </span>
+                              </td>
+
+                              {/* 5. Valeur totale */}
+                              <td className="right">
+                                <strong className="position-value-val">
+                                  {positionValue !== undefined
+                                    ? `${positionValue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                                    : '—'}
+                                </strong>
+                              </td>
+
+                              {/* 6. Plus/Moins-value (PnL latente) */}
+                              <td className="right">
+                                {gainLoss !== null ? (
+                                  <div className="pnl-cell">
+                                    <span className={`pnl-amount ${gainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                                      {gainLoss >= 0 ? '+' : ''}
+                                      {gainLoss.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                                    </span>
+                                    <span className={`pnl-badge ${gainLoss >= 0 ? 'pnl-badge-pos' : 'pnl-badge-neg'}`}>
+                                      {gainLoss >= 0 ? '+' : ''}{gainLossPct.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted">—</span>
+                                )}
+                              </td>
+
+                              {/* 7. Poids dans le portefeuille */}
+                              <td className="right">
+                                <span className="weight-val">
+                                  {breakdown ? `${breakdown.weight_pct}%` : '—'}
+                                </span>
+                              </td>
+
+                              {/* 8. Mode Look-Through */}
+                              <td className="center">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedLookThroughTicker(asset.ticker)}
+                                  className="btn-table-lookthrough"
+                                  title={`Décomposition par transparence de ${asset.ticker}`}
+                                >
+                                  🔍 Look-Through
+                                </button>
+                              </td>
+
+                              {/* 9. Menu déroulant 3-points Google Finance (Enregistrer un achat / Supprimer) */}
+                              <td className="center">
+                                <div className="table-kebab-wrapper">
+                                  <button
+                                    type="button"
+                                    className={`btn-kebab-menu ${openMenuTicker === asset.ticker ? 'active' : ''}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenMenuTicker(openMenuTicker === asset.ticker ? null : asset.ticker);
+                                    }}
+                                    title="Options"
+                                    aria-label="Options"
+                                  >
+                                    <svg className="kebab-svg" viewBox="0 0 24 24" fill="currentColor">
+                                      <circle cx="12" cy="5" r="1.75" />
+                                      <circle cx="12" cy="12" r="1.75" />
+                                      <circle cx="12" cy="19" r="1.75" />
+                                    </svg>
+                                  </button>
+
+                                  {openMenuTicker === asset.ticker && (
+                                    <div className={`google-dropdown-menu ${idx >= portfolio.length - 2 && portfolio.length > 2 ? 'dropdown-upwards' : ''}`}>
+                                      <button
+                                        type="button"
+                                        className="google-dropdown-item"
+                                        onClick={() => {
+                                          setOpenMenuTicker(null);
+                                          setSelectedAssetForTransactions(asset.ticker);
+                                        }}
+                                      >
+                                        <svg className="dropdown-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                                          <circle cx="7" cy="7" r="1.5" fill="currentColor"></circle>
+                                        </svg>
+                                        <span>Enregistrer une opération</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="google-dropdown-item google-dropdown-item-danger"
+                                        onClick={() => {
+                                          setOpenMenuTicker(null);
+                                          handleRemoveAsset(asset.ticker);
+                                        }}
+                                      >
+                                        <svg className="dropdown-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                          <polyline points="3 6 5 6 21 6"></polyline>
+                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                        <span>Supprimer</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    {portfolio.length > 0 && (
+                      <tfoot>
+                        <tr className="table-summary-row">
+                          <td>
+                            <strong>Total ({portfolio.length} positions)</strong>
+                          </td>
+                          <td className="center">
+                            <strong>
+                              {portfolio.reduce((acc, a) => acc + getAssetTotalShares(a), 0)}
+                            </strong>
+                          </td>
+                          <td className="right">
+                            <div className="summary-subtext">Coût d'achat global</div>
+                            <strong>
+                              {totalCostBasis > 0
+                                ? `${totalCostBasis.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                                : '—'}
+                            </strong>
+                          </td>
+                          <td></td>
+                          <td className="right">
+                            <div className="summary-subtext">Valorisation actuelle</div>
+                            <strong className="summary-total-val">
+                              {totalCurrentValue > 0
+                                ? `${totalCurrentValue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                                : '—'}
+                            </strong>
+                          </td>
+                          <td className="right">
+                            {totalCostBasis > 0 && totalCurrentValue > 0 ? (
+                              <div className="pnl-cell">
+                                <span className={`pnl-amount ${totalGainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                                  {totalGainLoss >= 0 ? '+' : ''}
+                                  {totalGainLoss.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                                </span>
+                                <span className={`pnl-badge ${totalGainLoss >= 0 ? 'pnl-badge-pos' : 'pnl-badge-neg'}`}>
+                                  {totalGainLoss >= 0 ? '+' : ''}{totalGainLossPct.toFixed(2)}%
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted">—</span>
+                            )}
+                          </td>
+                          <td className="right">
+                            <strong>100.0%</strong>
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+
+              {/* Section Graphiques : 3 Camemberts/Donuts (Allocation, Coté/Non Coté, Géographie) + Historique vs Benchmark */}
+              <div className="allocation-triplet-grid">
+                {/* Camembert 1 : Allocation par Actif */}
+                <div className="chart-card allocation-card">
+                  <PortfolioAllocationChart
+                    assetBreakdown={consolidatedBreakdown}
+                    totalInvestment={totalCurrentValue}
+                  />
+                </div>
+
+                {/* Camembert 2 : Typologie des Actifs (Google Finance : FNB, Actions, Non Boursier) */}
+                <div className="chart-card allocation-card">
+                  <ListedAllocationChart
+                    fnbAmount={fnbVal}
+                    stockAmount={stockVal}
+                    unlistedAmount={unlistedVal}
+                    totalInvestment={totalCurrentValue}
+                  />
+                </div>
+
+                {/* Camembert 3 : Expositions Géographiques */}
+                <div className="chart-card allocation-card">
+                  <GeographicAllocationChart
+                    geographicData={geoBreakdown}
+                    isLiveScraped={Object.keys(geoExposureData).length > 0}
+                    isLoading={isGeoLoading}
+                  />
+                </div>
+              </div>
+
+              {/* Historique Valorisation vs Benchmark Style Google Finance */}
+              <div className="history-chart-fullwidth">
+                <PortfolioHistoryChart
+                  timeSeries={performanceData?.time_series || []}
+                  emptyMessage={performanceData?.message}
+                  benchmarkTicker={benchmarkTicker}
+                  currentPeriod={historicalYears}
+                  onPeriodChange={(yr) => setHistoricalYears(yr)}
+                  onBenchmarkChange={(ticker) => setBenchmarkTicker(ticker)}
+                  comparisonBenchmarks={metricsData?.comparison_benchmarks || []}
+                />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* --- ONGLET 2 : STRESS TEST & MONTE CARLO --- */}
+        {activeTab === 'simulation' && (
+          <div className="tab-content">
+            {/* Détail des Positions Soumises au Stress Test */}
+            <StressTestPositionsTable
+              portfolio={portfolio}
+              availableAssets={availableAssets}
+              metricsData={metricsData}
+              getAssetTotalShares={getAssetTotalShares}
+              getAssetCostBasis={getAssetCostBasis}
+              onOpenLookThrough={(ticker) => setSelectedLookThroughTicker(ticker)}
+              cvar95={cvar95}
+            />
+
+            <div className="dashboard-panel">
+              <h3 className="section-title">Paramètres de la Simulation de Monte Carlo</h3>
+
+              <div className="simulation-controls-row">
+                <div className="control-group">
+                  <label className="params-label">Horizon (séances de bourse) :</label>
+                  <select
+                    value={timeHorizon}
+                    onChange={(e) => setTimeHorizon(parseInt(e.target.value))}
+                    className="form-select"
+                  >
+                    <option value={63}>3 Mois (63 jours)</option>
+                    <option value={126}>6 Mois (126 jours)</option>
+                    <option value={252}>1 An (252 jours)</option>
+                    <option value={504}>2 Ans (504 jours)</option>
+                    <option value={756}>3 Ans (756 jours)</option>
+                  </select>
+                </div>
+
+                <div className="control-group">
+                  <label className="params-label">Stratégie Quantitative :</label>
+                  <select
+                    value={strategyType}
+                    onChange={(e) => setStrategyType(e.target.value)}
+                    className="form-select"
+                  >
+                    <option value="buy_and_hold">Buy & Hold (Conservation passive)</option>
+                    <option value="dca">Versements programmés (DCA Régulier)</option>
+                  </select>
+                </div>
+              </div>
+
+              {strategyType === 'dca' && (
+                <div className="strategy-params-box">
+                  <div className="param-col">
+                    <label className="param-label">Montant par versement (€) :</label>
+                    <input type="number" min="1" value={dcaAmount} onChange={(e) => setDcaAmount(parseFloat(e.target.value) || 0)} className="param-input" />
+                  </div>
+                  <div className="param-col">
+                    <label className="param-label">Périodicité (jours ouvrés) :</label>
+                    <input type="number" value={dcaFrequency} onChange={(e) => setDcaFrequency(parseInt(e.target.value) || 0)} className="param-input" />
+                  </div>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-        
-        <h3 style={{ marginTop: 0 }}>Composition du Portefeuille</h3>
-          {portfolio.map((asset) => {
-            const assetDetails = availableAssets.find(a => a.ticker === asset.ticker);
-            const fullName = assetDetails ? assetDetails.name : "";
 
-            return (
-              <div 
-                key={asset.ticker} 
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', marginBottom: '8px', border: '1px solid #e9ecef', borderRadius: '6px', backgroundColor: '#f8f9fa' }}
+              <button
+                onClick={handleSimulate}
+                disabled={status === 'loading'}
+                className="btn-simulate"
               >
-                {/* Zone d'identification de l'actif */}
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                  <strong style={{ fontSize: '16px', color: '#212529', minWidth: '70px' }}>
-                    {getDisplayTicker(asset.ticker)}
-                  </strong>
-                  
-                  <span style={{ fontSize: '11px', color: '#868e96', backgroundColor: '#f1f3f5', padding: '2px 6px', borderRadius: '4px', marginRight: '12px' }}>
-                    {getExchangeName(asset.ticker)}
-                  </span>
-                  
-                  <span style={{ color: '#868e96', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }}>
-                    {fullName}
-                  </span>
-                </div>
+                {status === 'loading' ? 'Exécution des 10 000 trajectoires en cours...' : 'Lancer le Stress Test Monte Carlo (10 000 trajectoires)'}
+              </button>
+              {status === 'error' && (
+                <p className="section-subtitle text-danger">Simulation interrompue : {simulationError || 'erreur inconnue'}</p>
+              )}
+            </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#495057', marginRight: '8px' }}>Parts</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={asset.shares}
-                      onChange={(e) => {
-                        const rawValue = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.');
-                        handleUpdateShares(asset.ticker, rawValue);
-                      }}
-                      onBlur={(e) => {
-                        let finalValue = parseFloat(e.target.value);
-                        if (isNaN(finalValue) || finalValue <= 0) {
-                          finalValue = 1;
-                        }
-                        handleUpdateShares(asset.ticker, finalValue);
-                      }}
-                      style={{ width: '80px', padding: '6px', borderRadius: '4px', border: '1px solid #ced4da', textAlign: 'right' }}
-                    />
+            <OptimizationPanel
+              assetBreakdown={metricsData?.asset_breakdown || []}
+            />
+
+            {/* Résultats de simulation */}
+            {status === 'success' && histogramData && (
+              <div className="results-container">
+                <div className="metrics-row">
+                  <div className="metric-card border-var">
+                    <h3 className="metric-title">Value at Risk 95% (Perte potentielle)</h3>
+                    <p className="metric-value text-danger">{var95?.toFixed(2)} €</p>
+                    <span className="metric-desc">Dans 95% des scénarios, la perte à l'horizon simulé ne dépasse pas ce montant.</span>
                   </div>
-                  
-                  <button
-                    onClick={() => handleRemoveAsset(asset.ticker)}
-                    style={{ padding: '6px 12px', backgroundColor: '#fff', color: '#fa5252', border: '1px solid #ffc9c9', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ffe3e3'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
-                  >
-                    Retirer
-                  </button>
+                  <div className="metric-card border-cvar">
+                    <h3 className="metric-title">Expected Shortfall 95% (CVaR)</h3>
+                    <p className="metric-value text-dark-danger">{cvar95?.toFixed(2)} €</p>
+                    <span className="metric-desc">Perte moyenne dans les 5% de pires scénarios.</span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
 
-        <div style={{ marginTop: '20px', borderTop: '1px solid #ccc', paddingTop: '15px', display: 'flex', alignItems: 'center' }}>
-          <label style={{ fontWeight: 'bold', marginRight: '15px', width: '250px' }}>
-            Horizon Temporel (jours ouvrés) :
-          </label>
-          <input 
-            type="number" 
-            value={timeHorizon}
-            onChange={(e) => setTimeHorizon(parseInt(e.target.value) || 0)}
-            style={{ padding: '8px', width: '100px', borderRadius: '4px', border: '1px solid #ccc' }}
-            disabled={status === 'loading'}
-          />
-        </div>
-        
-        {/* --- MODULE DE STRATÉGIE --- */}
-        <div style={{ marginTop: '20px', borderTop: '1px solid #ccc', paddingTop: '20px', paddingBottom: '10px' }}>
-          <h4 style={{ margin: '0 0 15px 0', color: '#495057' }}>Implémenter une stratégie</h4>
-          
-          <select 
-            value={strategyType} 
-            onChange={(e) => setStrategyType(e.target.value)}
-            style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', fontSize: '15px' }}
-            disabled={status === 'loading'}
-          >
-            <option value="buy_and_hold">Achat & Conservation (Passif)</option>
-            <option value="dca">DCA (Investissement Programmé)</option>
-            <option value="trigger">Momentum (Achat/Vente sur seuil)</option>
-          </select>
+                {/* Histogramme de distribution */}
+                <div className="chart-wrapper medium">
+                  <h4 className="chart-header">Distribution du PnL Final et Seuil VaR 95%</h4>
+                  <ResponsiveContainer width="100%" height="88%">
+                    <BarChart data={histogramData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="pnl" tickFormatter={(val) => `${val}€`} minTickGap={30} />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`${value} scénarios`, 'Fréquence']} labelFormatter={(label) => `PnL : ${label} €`} />
+                      <Bar dataKey="frequence">
+                        {histogramData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={varPnlThreshold != null && entry.pnl <= varPnlThreshold ? '#dc3545' : '#3b82f6'} />
+                        ))}
+                      </Bar>
+                      <ReferenceLine
+                        x={varBinPnl}
+                        stroke="#dc3545"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        label={{ position: 'top', value: 'Seuil VaR 95%', fill: '#dc3545', fontSize: 12, fontWeight: 'bold' }}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
 
-          {/* Panneau DCA */}
-          {strategyType === 'dca' && (
-            <div style={{ display: 'flex', gap: '15px', backgroundColor: '#e9ecef', padding: '15px', borderRadius: '6px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Volume d'actions ajouté</label>
-                <input type="number" value={dcaVolume} onChange={(e) => setDcaVolume(parseInt(e.target.value) || 0)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Fréquence (Jours)</label>
-                <input type="number" value={dcaFrequency} onChange={(e) => setDcaFrequency(parseInt(e.target.value) || 0)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da' }} />
-              </div>
-            </div>
-          )}
+                {/* Trajectoires stochastiques */}
+                {quantitativeData?.paths && quantitativeData.paths.length > 0 && (() => {
+                  // Calcul d'un domaine Y serré basé sur p1/p99 pour un rendu visuel frappant
+                  const pathsData = quantitativeData.paths;
+                  const allP1 = pathsData.map(d => d.p1).filter(v => v != null);
+                  const allP99 = pathsData.map(d => d.p99).filter(v => v != null);
+                  const yMin = Math.min(...allP1);
+                  const yMax = Math.max(...allP99);
+                  const yRange = yMax - yMin;
+                  const padding = yRange * 0.10;
+                  const domainMin = Math.max(0, Math.floor((yMin - padding) / 500) * 500);
+                  const domainMax = Math.ceil((yMax + padding) / 500) * 500;
 
-          {/* Panneau Trigger (Momentum) */}
-          {strategyType === 'trigger' && (
-            <div style={{ display: 'flex', gap: '15px', backgroundColor: '#e9ecef', padding: '15px', borderRadius: '6px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Action</label>
-                <select value={triggerAction} onChange={(e) => setTriggerAction(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da' }}>
-                  <option value="sell">Vendre</option>
-                  <option value="buy">Renforcer</option>
-                </select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Si variation (%)</label>
-                <input type="number" value={triggerPct} onChange={(e) => setTriggerPct(parseFloat(e.target.value) || 0)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' }}>Sur X Jours</label>
-                <input type="number" value={triggerWindow} onChange={(e) => setTriggerWindow(parseInt(e.target.value) || 0)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ced4da' }} />
-              </div>
-            </div>
-          )}
-        </div>
+                  return (
+                    <div className="chart-wrapper large">
+                      <h3 className="chart-header">
+                        Faisceau de Trajectoires Stochastiques
+                        <span className="chart-subtitle">
+                          Médiane, Scénario Optimiste (1%) et Scénario de Crise (99%)
+                        </span>
+                      </h3>
+                      <ResponsiveContainer width="100%" height="88%">
+                        <LineChart data={pathsData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="day" tickFormatter={(val) => `J+${val}`} />
+                          <YAxis
+                            domain={[domainMin, domainMax]}
+                            tickFormatter={(val) => {
+                              if (val >= 1000) return `${(val / 1000).toFixed(1)}k€`;
+                              return `${Math.round(val)} €`;
+                            }}
+                            width={60}
+                          />
+                          <Tooltip content={(props) => <CustomSimulationTooltip {...props} />} />
 
-        <button 
-          onClick={handleSimulate} 
-          disabled={status === 'loading'}
-          style={{ 
-            marginTop: '25px', width: '100%', padding: '15px', fontSize: '16px', 
-            backgroundColor: '#000', color: 'white', border: 'none', borderRadius: '5px',
-            cursor: status === 'loading' ? 'not-allowed' : 'pointer', fontWeight: 'bold'
-          }}
-        >
-          {status === 'loading' ? 'Calcul stochastique en cours...' : 'Recalculer les trajectoires'}
-        </button>
+                          {Object.keys(pathsData[0] || {}).filter(key => key.startsWith('path_')).map((key) => (
+                            <Line key={key} type="monotone" dataKey={key} stroke="#cbd5e1" strokeWidth={0.8} dot={false} isAnimationActive={false} opacity={0.25} style={{ pointerEvents: 'none' }} />
+                          ))}
+
+                          <Line type="monotone" dataKey="p99" name="Scénario Optimiste (1%)" stroke="#10b981" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                          <Line type="monotone" dataKey="median" name="Trajectoire Médiane" stroke="#1e293b" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                          <Line type="monotone" dataKey="p1" name="Scénario de Crise (99%)" stroke="#ef4444" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+
+                          <ReferenceLine y={quantitativeData.initial_investment} stroke="#475569" strokeWidth={1.5} strokeDasharray="3 3" label={{ position: 'left', value: 'Capital initial', fill: '#475569', fontSize: 10 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {status === 'success' && histogramData && (
-        <div style={{ marginTop: '3rem' }}>
-          <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
-            <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '8px', flex: 1, borderLeft: '4px solid #dc3545' }}>
-              <h3 style={{ margin: '0 0 10px 0', color: '#6c757d', fontSize: '15px' }}>
-                Valorisation au 5e Centile (VaR Absolue)
-              </h3>
-              <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#dc3545' }}>
-                {var95?.toFixed(2)} €
-              </p>
-            </div>
-            <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '8px', flex: 1, borderLeft: '4px solid #850000' }}>
-              <h3 style={{ margin: '0 0 10px 0', color: '#6c757d', fontSize: '15px' }}>
-                Moyenne des pires 5% (Expected Shortfall)
-              </h3>
-              <p style={{ margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#850000' }}>
-                {cvar95?.toFixed(2)} €
-              </p>
-            </div>
-          </div>
+      {/* Assistant Copilot IA : Bulle Flottante & Fenêtre Détachable */}
+      <FloatingCopilot
+        isOpen={isCopilotOpen}
+        setIsOpen={setIsCopilotOpen}
+        isExpanded={isCopilotExpanded}
+        setIsExpanded={setIsCopilotExpanded}
+        portfolioContext={portfolioContext}
+      />
 
-          <div style={{ height: '350px', minHeight: '350px', minWidth: 0, width: '100%', border: '1px solid #eee', borderRadius: '8px', padding: '1rem', marginBottom: '2rem' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={histogramData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="pnl" tickFormatter={(val) => `${val}€`} minTickGap={30} />
-                  <YAxis />
-                  <Tooltip formatter={(value) => [`${value} scénarios`, 'Fréquence']} labelFormatter={(label) => `PnL : ${label} €`} />
-                  <Bar dataKey="frequence">
-                    {histogramData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.pnl <= var95 ? '#dc3545' : '#4dabf7'} />
-                    ))}
-                  </Bar>
-                  <ReferenceLine 
-                    x={var95} 
-                    stroke="#dc3545" 
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                    label={{ 
-                      position: 'top', 
-                      value: 'VaR 95% (Seuil de perte)', 
-                      fill: '#dc3545', 
-                      fontSize: 12, 
-                      fontWeight: 'bold' 
-                    }} 
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-          </div>
-
-          {quantitativeData?.paths && quantitativeData.paths.length > 0 && (
-            <>
-              {/* Le Graphique du PnL Linéarisé */}
-              <div style={{ height: '450px', minHeight: '450px', minWidth: 0, width: '100%', border: '1px solid #eee', borderRadius: '8px', padding: '1rem' }}>
-                <h3 style={{ margin: '0 0 15px 0', color: '#6c757d', textAlign: 'center', fontSize: '16px' }}>
-                  Analyse de la Valorisation (Courbes Linéarisées)
-                  
-                  <span style={{ display: 'block', fontSize: '13px', marginTop: '5px', color: '#868e96' }}>
-                    Capital de base investi : {quantitativeData.initial_investment?.toFixed(2) || 0} €
-                  </span>
-                  
-                  {/* AFFICHAGE DE LA CAPITALISATION ET DU PNL RELATIF (%) */}
-                  {quantitativeData.metrics && (() => {
-                    const { median_absolute, median_invested, median_pnl } = quantitativeData.metrics;
-                    
-                    // Calcul rigoureux du rendement (Performance pondérée)
-                    const totalReturnPct = median_invested > 0 
-                      ? ((median_absolute / median_invested) - 1) * 100 
-                      : 0;
-
-                    const isPositive = median_pnl >= 0;
-                    const pnlColor = isPositive ? '#2b8a3e' : '#dc3545';
-                    const sign = isPositive ? '+' : '';
-
-                    return (
-                      <span style={{ display: 'block', fontSize: '15px', marginTop: '10px', color: '#343a40', fontWeight: 'bold' }}>
-                        Capitalisation Finale (Médiane) : {median_absolute.toFixed(2)} € 
-                        <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#6c757d', marginLeft: '6px' }}>
-                          ( {median_invested.toFixed(2)} € investis 
-                          <span style={{ color: pnlColor, fontWeight: 'bold', marginLeft: '4px' }}>
-                            {sign}{median_pnl.toFixed(2)} €
-                          </span> )
-                        </span>
-                        <span style={{ color: pnlColor, fontWeight: 'bold', marginLeft: '8px' }}>
-                          ({totalReturnPct > 0 ? '+' : ''}{totalReturnPct.toFixed(2)}%)
-                        </span>
-                      </span>
-                    );
-                  })()}
-                </h3>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={quantitativeData.paths} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="day" tickFormatter={(val) => `J+${val}`} />
-                    <YAxis tickFormatter={(val) => `${val > 0 ? '+' : ''}${(val / 1000).toFixed(1)}k€`} />
-                    
-                    <Tooltip content={(props) => <CustomTooltip {...props} baseCapital={quantitativeData.initial_investment || 0} />} />
-                    
-                    {Object.keys(quantitativeData.paths[0] || {}).filter(key => key.startsWith('path_')).map((key) => (
-                        <Line key={key} type="monotone" dataKey={key} stroke="#ced4da" strokeWidth={1} dot={false} isAnimationActive={false} activeDot={false} opacity={0.4} style={{ pointerEvents: 'none' }} />
-                    ))}
-
-                    <Line type="monotone" dataKey="p99" name="Scénario Optimiste (1%)" stroke="#2b8a3e" strokeWidth={3} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="median" name="Trajectoire Médiane" stroke="#495057" strokeWidth={3} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="p1" name="Scénario de Crise (99%)" stroke="#dc3545" strokeWidth={3} dot={false} isAnimationActive={false} />
-
-                    <ReferenceLine y={quantitativeData.initial_investment || 0} stroke="#000" strokeWidth={2} strokeDasharray="3 3" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* L'historique des Transactions (Uniquement si la stratégie a déclenché des ordres) */}
-              {quantitativeData.trade_history && quantitativeData.trade_history.length > 0 && (
-                <div style={{ marginTop: '4rem', padding: '1.5rem', background: '#f8f9fa', borderRadius: '8px', borderLeft: '4px solid #4dabf7' }}>
-                  <h3 style={{ margin: '0 0 15px 0', color: '#495057' }}>
-                    Historique des Transactions (Tracé sur le Scénario de Référence)
-                  </h3>
-                  <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #dee2e6', borderRadius: '6px', backgroundColor: '#fff' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                      <thead style={{ backgroundColor: '#e9ecef', position: 'sticky', top: 0, zIndex: 1 }}>
-                        <tr>
-                          <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #dee2e6' }}>Date (Jour)</th>
-                          <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #dee2e6' }}>Type d'Opération</th>
-                          <th style={{ padding: '12px', textAlign: 'center', borderBottom: '1px solid #dee2e6' }}>Volume</th>
-                          <th style={{ padding: '12px', textAlign: 'right', borderBottom: '1px solid #dee2e6' }}>Prix d'achat</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {quantitativeData.trade_history.map((trade, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f1f3f5' }}>
-                            <td style={{ padding: '12px', color: '#868e96', fontWeight: 'bold' }}>J+{trade.day}</td>
-                            <td style={{ padding: '12px', fontWeight: 'bold', color: trade.action.includes('profit') ? '#e67700' : '#2b8a3e' }}>
-                              {trade.action}
-                            </td>
-                            <td style={{ padding: '12px', textAlign: 'center', color: '#495057', fontWeight: 'bold' }}>
-                              x {trade.volume}
-                            </td>
-                            <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px' }}>
-                              {trade.amount.toFixed(2)} €
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+      {/* Bulle Info / Modale Mode Look-Through */}
+      {selectedLookThroughTicker && (
+        <LookThroughModal
+          ticker={selectedLookThroughTicker}
+          onClose={() => setSelectedLookThroughTicker(null)}
+        />
       )}
+
+      {/* Fenêtre Modale de Gestion des Opérations d'Achat/Vente (Style Google Finance) */}
+      {selectedAssetForTransactions && (() => {
+        const assetObj = portfolio.find(a => a.ticker === selectedAssetForTransactions);
+        const assetDetails = availableAssets.find(a => a.ticker === selectedAssetForTransactions);
+        const breakdown = (metricsData?.asset_breakdown || []).find(b => b.ticker === selectedAssetForTransactions);
+
+        return (
+          <TransactionModal
+            ticker={selectedAssetForTransactions}
+            assetName={assetDetails ? assetDetails.name : selectedAssetForTransactions}
+            currentPrice={breakdown?.current_price}
+            transactions={assetObj?.transactions || []}
+            onAddTransaction={handleAddTransaction}
+            onRemoveTransaction={handleRemoveTransaction}
+            onClose={() => setSelectedAssetForTransactions(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

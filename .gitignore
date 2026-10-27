@@ -14,9 +14,11 @@ __pycache__/
 *$py.class
 .mypy_cache/
 .ruff_cache/
+*.pyc
 
-# Logs et données locales
+# Logs et données locales (dont les journaux d'Airflow montés dans ./logs)
 *.log
+logs/
 pgdata/
 
 # Outils de test
