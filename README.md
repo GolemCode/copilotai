@@ -12,6 +12,7 @@ qu'il n'a pas trouvé dans ses sources.
 
 | Domaine | Ce que fait l'application |
 |---|---|
+| Simulateur d'achats | Écran d'accueil pour débutant : mise de départ, versement mensuel et durée (1 à 30 ans) ; projection en fourchette (médiane, 1 cas sur 2, 9 cas sur 10) sous trois hypothèses de rendement (0, 4 et 7 % par an), avec le risque de finir sous ses versements |
 | Portefeuille | Journal d'achats/ventes enregistré en base ; prix d'achat par défaut = cours de clôture réel du jour (converti en EUR) ; ventes impossibles au-delà de la quantité détenue à leur date |
 | Performance réelle | TWR (pondéré dans le temps, norme GIPS), XIRR (pondéré par les capitaux), volatilité, Sharpe, Sortino et drawdown réalisés, comparaison à un benchmark recevant les mêmes versements |
 | Risque ex-ante | Volatilité, Sharpe, Sortino, drawdown de la composition actuelle sur 1 à 10 ans d'historique |
@@ -79,6 +80,7 @@ Règles de collecte ([app/services/market_data.py](app/services/market_data.py))
 | Performance réelle | TWR par valorisation quotidienne (Dietz modifié journalier, flux en cours de journée) ; XIRR base 365 ; pas d'annualisation sous un an (GIPS) |
 | Risque ex-ante | Poids actuels appliqués à chaque séance historique |
 | Monte Carlo | Dérive nulle en espérance (μ_log = −σ²/2) : aucune tendance supposée, la moyenne historique étant un estimateur trop bruité qui rendrait la VaR optimiste ; covariance estimée sur blocs de 5 séances, chocs corrélés par Cholesky, VaR/ES 95 % = −quantile 5 % du PnL |
+| Simulateur d'achats | Pas mensuel, portefeuille rééquilibré de volatilité σ_p = √(wᵀΣw) estimée sur l'historique ; rendement annuel espéré fixé par hypothèse (μ_log mensuel = ln(1 + r)/12 − σ²/2), mêmes tirages pour les trois hypothèses ; versements investis en fin de mois, hors frais, impôts et inflation |
 | Stress tests | Rendement réalisé de chaque actif sur la fenêtre historique, appliqué à la valeur actuelle de la ligne ; bêtas de Dimson (décalage d'une séance) |
 | Clôtures non synchrones | Paris clôture avant New York : corrélations et bêtas quotidiens sont biaisés vers zéro. Covariances du Monte Carlo estimées sur blocs de 5 séances, bêtas de Dimson |
 | RAG | Seuil sur la similarité cosinus réelle (0,30, à calibrer) ; chiffres de la réponse vérifiés contre le contexte fourni au LLM |

@@ -4366,3 +4366,98 @@ body {
 }
 .source-verify-link:hover { border-color: var(--primary); color: var(--primary); }
 .lookthrough-table-caption .caption-highlight { color: var(--primary); }
+
+/* ==========================================================================
+   Simulateur d'achats (onglet d'accueil)
+   ========================================================================== */
+.plan-simulator { display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 1.5rem; }
+.plan-simulator .dashboard-panel { margin-bottom: 0; }
+.plan-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+.plan-field { display: flex; flex-direction: column; gap: 6px; }
+.plan-field-label { font-size: 0.8rem; font-weight: 600; color: var(--slate-700); }
+.plan-field-label strong { color: var(--primary); }
+.plan-input-wrap { position: relative; display: block; }
+.plan-input-wrap .form-input { width: 100%; padding: 9px 30px 9px 12px; font-size: 1rem; font-variant-numeric: tabular-nums; box-sizing: border-box; }
+.plan-input-unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--slate-500); font-size: 0.9rem; }
+.plan-field .form-select { width: 100%; padding: 9px 10px; box-sizing: border-box; }
+.plan-range { width: 100%; accent-color: var(--primary); margin: 8px 0 0; }
+.plan-range-scale { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--slate-500); }
+
+.plan-empty { color: var(--slate-600); font-size: 0.9rem; }
+.plan-headline { font-size: 1rem; color: var(--slate-700); margin: 0 0 1rem; line-height: 1.6; }
+.plan-headline strong { color: var(--slate-900); }
+
+.plan-scenario-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.plan-scenario-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 1rem 1.15rem;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.plan-scenario-card:hover { border-color: var(--slate-400); }
+.plan-scenario-card.active { border-color: var(--primary); background: var(--primary-light); box-shadow: inset 0 0 0 1px var(--primary); }
+.plan-scenario-title {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate-500);
+}
+.plan-scenario-rate { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 0.78rem; color: var(--slate-600); margin-top: 2px; }
+.plan-scenario-median { font-size: 1.6rem; font-weight: 600; color: var(--slate-900); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.plan-scenario-caption { font-size: 0.75rem; color: var(--slate-500); }
+.plan-scenario-range { font-size: 0.85rem; color: var(--slate-700); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.plan-scenario-risk { font-size: 0.8rem; color: var(--slate-600); }
+.plan-scenario-risk strong { color: var(--slate-900); }
+
+.plan-chart-card { padding: 1.25rem; }
+.plan-chart-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.plan-legend { display: flex; flex-wrap: wrap; gap: 0.9rem; font-size: 0.78rem; color: var(--slate-600); }
+.plan-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.plan-swatch { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
+.plan-swatch.band90 { background: rgba(74, 127, 176, 0.18); }
+.plan-swatch.band50 { background: rgba(74, 127, 176, 0.42); }
+.plan-swatch.median { height: 3px; background: var(--primary); }
+.plan-swatch.invested { height: 0; border-top: 2px dashed var(--slate-900); }
+.plan-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--slate-700);
+  box-shadow: var(--shadow-md);
+  font-variant-numeric: tabular-nums;
+}
+.plan-tooltip strong { color: var(--slate-900); margin-bottom: 2px; }
+
+.plan-explainer ul { margin: 0.5rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; color: var(--slate-700); font-size: 0.875rem; line-height: 1.55; }
+.plan-explainer .chart-title { display: flex; align-items: center; gap: 6px; }
+
+.is-updating { opacity: 0.6; transition: opacity 0.15s ease; }
+
+@media (max-width: 1100px) {
+  .plan-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .plan-form-grid, .plan-scenario-grid { grid-template-columns: 1fr; }
+}
+.plan-field-hint { font-size: 0.75rem; color: var(--slate-500); font-variant-numeric: tabular-nums; }

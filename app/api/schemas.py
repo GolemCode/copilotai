@@ -15,6 +15,19 @@ class PortfolioSimulationRequest(BaseModel):
     # Graine optionnelle : même graine + mêmes données => mêmes trajectoires (reproductibilité)
     seed: Optional[int] = Field(default=None, ge=0)
 
+class ProjectionAsset(BaseModel):
+    ticker: str
+    weight: float = Field(..., gt=0, description="Poids dans l'allocation (normalisé côté serveur)")
+
+class SavingsProjectionRequest(BaseModel):
+    """Plan d'épargne : mise de départ, versement mensuel et horizon, investis selon une allocation."""
+    assets: List[ProjectionAsset] = Field(..., min_length=1)
+    initial_amount: float = Field(default=0.0, ge=0, le=10_000_000)
+    monthly_contribution: float = Field(default=0.0, ge=0, le=1_000_000)
+    years: int = Field(default=10, ge=1, le=40)
+    num_paths: int = Field(default=5000, ge=500, le=20000)
+    seed: Optional[int] = Field(default=None, ge=0)
+
 class TaskSubmissionResponse(BaseModel):
     status: str
     task_id: str

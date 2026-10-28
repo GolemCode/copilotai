@@ -18,6 +18,7 @@ import yfinance as yf
 
 from app.api.schemas import (
     PortfolioSimulationRequest,
+    SavingsProjectionRequest,
     TaskSubmissionResponse,
     RagQueryRequest,
     RagQueryResponse,
@@ -48,6 +49,7 @@ from app.services.etf_screener import RAG_REFERENCE_TICKERS, get_popular_etfs
 from app.quant.estimation import weekly_covariance
 from app.quant.metrics import compute_portfolio_metrics
 from app.quant.monte_carlo import zero_drift
+from app.quant.projection import portfolio_daily_volatility, project_savings_plan
 from app.quant.performance import compute_holdings_history, compute_realized_performance
 from app.quant.stress import compute_historical_stress
 from app.services.portfolio import (
@@ -242,6 +244,53 @@ async def run_simulation(
         traceback.print_exc()
         print("="*50 + "\n")
         raise HTTPException(status_code=500, detail=f"Erreur interne du serveur : {str(e)}")
+
+@app.post("/api/v1/projection")
+async def project_savings(request: SavingsProjectionRequest, conn=Depends(get_db_connection)):
+    """
+    Projection d'un plan d'achats (mise de départ + versements mensuels) sous trois hypothèses de rendement.
+    La volatilité de l'allocation est estimée sur l'historique en base ; le rendement, lui, est une hypothèse affichée.
+    """
+    weights_by_ticker: Dict[str, float] = {}
+    for asset in request.assets:
+        weights_by_ticker[asset.ticker] = weights_by_ticker.get(asset.ticker, 0.0) + asset.weight
+    tickers = list(weights_by_ticker)
+
+    adjusted, _, _ = await load_base_currency_panel(conn, tickers, years=5)
+    missing = [t for t in tickers if adjusted.is_empty() or t not in adjusted.columns]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Historique de cours introuvable pour : {', '.join(missing)}")
+
+    returns = adjusted.select([
+        (pl.col(t).log() - pl.col(t).log().shift(1)).alias(t) for t in tickers
+    ]).drop_nulls().to_numpy()
+    returns = returns[np.isfinite(returns).all(axis=1)]
+    if len(returns) < 60:
+        raise HTTPException(status_code=400, detail="Historique trop court pour estimer la volatilité (moins de 60 séances).")
+
+    weights = np.array([weights_by_ticker[t] for t in tickers])
+    weights = weights / weights.sum()
+    daily_vol = portfolio_daily_volatility(weights, weekly_covariance(returns))
+
+    try:
+        projection = project_savings_plan(
+            daily_volatility=daily_vol,
+            initial_amount=request.initial_amount,
+            monthly_contribution=request.monthly_contribution,
+            years=request.years,
+            num_paths=request.num_paths,
+            seed=request.seed,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        **projection,
+        "allocation": [{"ticker": t, "weight": round(float(w), 4)} for t, w in zip(tickers, weights)],
+        "history_start": str(adjusted["market_date"][0]),
+        "history_sessions": int(len(returns)),
+    }
+
 
 @app.get("/api/v1/simulate/{task_id}") 
 async def get_simulation_status(task_id: str):

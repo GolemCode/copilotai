@@ -9,6 +9,7 @@ import { TransactionModal } from './components/TransactionModal';
 import { ListedAllocationChart } from './components/ListedAllocationChart';
 import { GeographicAllocationChart } from './components/GeographicAllocationChart';
 import { StressTestPositionsTable } from './components/StressTestPositionsTable';
+import { SavingsPlanSimulator } from './components/SavingsPlanSimulator';
 import { getAssetCategory } from './utils/assetClassifier';
 import { Icon } from './components/Icon';
 import { getDisplayTicker, getExchangeName, signTone, toneClass } from './utils/format';
@@ -169,7 +170,7 @@ const UNLISTED_PRESETS = [
 const NON_LISTED_TICKERS = UNLISTED_PRESETS.map(p => p.ticker);
 
 function App() {
-  const [activeTab, setActiveTab] = useState('portfolio'); // 'portfolio' | 'simulation'
+  const [activeTab, setActiveTab] = useState('plan'); // 'plan' | 'portfolio' | 'simulation'
   const [selectedLookThroughTicker, setSelectedLookThroughTicker] = useState(null);
   const [selectedAssetForTransactions, setSelectedAssetForTransactions] = useState(null);
   const [openMenuTicker, setOpenMenuTicker] = useState(null);
@@ -658,6 +659,14 @@ function App() {
     };
   }, [portfolio, metricsData, availableAssets]);
 
+  // Répartition des lignes cotées, point de départ proposé au simulateur d'achats (poids en %)
+  const planAllocation = useMemo(() => {
+    const listed = (portfolioContext?.positions || [])
+      .filter(p => !NON_LISTED_TICKERS.includes(p.ticker) && p.weight_pct > 0);
+    const total = listed.reduce((acc, p) => acc + p.weight_pct, 0);
+    return total > 0 ? listed.map(p => ({ ticker: p.ticker, weight: (p.weight_pct / total) * 100 })) : [];
+  }, [portfolioContext]);
+
   return (
     <div className="app-container">
       {/* Colonne Principale */}
@@ -665,17 +674,23 @@ function App() {
         <header className="app-header">
           <div>
             <h1 className="main-title">Copilot AI</h1>
-            <p className="main-subtitle">Suivi de portefeuille, analyse de risque et assistant documentaire sur ETF</p>
+            <p className="main-subtitle">Simulez vos futurs investissements en ETF, suivez votre portefeuille et interrogez l'assistant documentaire</p>
           </div>
 
           {/* Sélecteur d'onglets */}
           <nav className="tab-navigation">
             <div className="tab-buttons-group">
               <button
+                className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
+                onClick={() => setActiveTab('plan')}
+              >
+                <Icon name="plan" /> Simuler mes achats
+              </button>
+              <button
                 className={`tab-btn ${activeTab === 'portfolio' ? 'active' : ''}`}
                 onClick={() => setActiveTab('portfolio')}
               >
-                <Icon name="portfolio" /> Portefeuille
+                <Icon name="portfolio" /> Mon portefeuille
               </button>
               <button
                 className={`tab-btn ${activeTab === 'simulation' ? 'active' : ''}`}
@@ -697,7 +712,11 @@ function App() {
           </nav>
         </header>
 
-        {/* Section 1 : Sélecteur et Recherche d'Actifs */}
+        {/* --- ONGLET 0 : SIMULATEUR D'ACHATS (accueil) --- */}
+        {activeTab === 'plan' && <SavingsPlanSimulator portfolioAllocation={planAllocation} />}
+
+        {/* Section 1 : Sélecteur et Recherche d'Actifs (suivi du portefeuille) */}
+        {activeTab !== 'plan' && (
         <div className="dashboard-panel search-only-panel">
           <div className="search-container">
             <div className="search-header-row">
@@ -785,6 +804,7 @@ function App() {
             )}
           </div>
         </div>
+        )}
 
         {/* --- ONGLET 1 : PORTEFEUILLE & ALLOCATION --- */}
         {activeTab === 'portfolio' && (() => {
