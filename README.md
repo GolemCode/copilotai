@@ -12,7 +12,7 @@ qu'il n'a pas trouvé dans ses sources.
 
 | Domaine | Ce que fait l'application |
 |---|---|
-| Simulateur d'achats | Écran d'accueil pour débutant : mise de départ, versement mensuel et durée (1 à 30 ans) ; projection en fourchette (médiane, 1 cas sur 2, 9 cas sur 10) sous trois hypothèses de rendement (0, 4 et 7 % par an), avec le risque de finir sous ses versements |
+| Simulateur d'achats | Onglet pour débutant : mise de départ, versement mensuel et durée (1 à 30 ans) ; projection en fourchette (médiane, 1 cas sur 2, 9 cas sur 10) sous trois hypothèses de rendement (0, 4 et 7 % par an), avec le risque de finir sous ses versements |
 | Portefeuille | Journal d'achats/ventes enregistré en base ; prix d'achat par défaut = cours de clôture réel du jour (converti en EUR) ; ventes impossibles au-delà de la quantité détenue à leur date |
 | Performance réelle | TWR (pondéré dans le temps, norme GIPS), XIRR (pondéré par les capitaux), volatilité, Sharpe, Sortino et drawdown réalisés, comparaison à un benchmark recevant les mêmes versements |
 | Risque ex-ante | Volatilité, Sharpe, Sortino, drawdown de la composition actuelle sur 1 à 10 ans d'historique |

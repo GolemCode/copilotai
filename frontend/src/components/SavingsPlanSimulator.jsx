@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Area, ComposedChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Icon } from './Icon';
-import { formatDate, getDisplayTicker } from '../utils/format';
+import { getDisplayTicker } from '../utils/format';
 import { COLORS } from '../utils/theme';
 
 // Graine fixe : en modifiant un montant, seule l'hypothèse change, pas le tirage aléatoire
@@ -19,11 +18,6 @@ const formatEurShort = (value) => (
 const formatYears = (months) => {
   const years = months / 12;
   return years === 1 ? '1 an' : `${years.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ans`;
-};
-// « 0, 4 et 7 »
-const formatRates = (scenarios) => {
-  const rates = scenarios.map(s => (s.annual_return * 100).toLocaleString('fr-FR'));
-  return rates.length > 1 ? `${rates.slice(0, -1).join(', ')} et ${rates[rates.length - 1]}` : rates.join('');
 };
 const parseAmount = (raw) => {
   const value = Number(String(raw).replace(',', '.'));
@@ -219,7 +213,7 @@ export const SavingsPlanSimulator = ({ portfolioAllocation }) => {
                     <span className="plan-scenario-rate">{(s.annual_return * 100).toLocaleString('fr-FR')} % par an en moyenne</span>
                   </span>
                   <span className="plan-scenario-median">{formatEur(s.final.median)}</span>
-                  <span className="plan-scenario-caption">valeur médiane (une chance sur deux de faire mieux)</span>
+                  <span className="plan-scenario-caption">valeur médiane</span>
                   <span className="plan-scenario-range">
                     9 fois sur 10 entre {formatEur(s.final.p5)} et {formatEur(s.final.p95)}
                   </span>
@@ -266,25 +260,6 @@ export const SavingsPlanSimulator = ({ portfolioAllocation }) => {
             </div>
           </div>
 
-          <div className="dashboard-panel plan-explainer">
-            <h4 className="chart-title"><Icon name="info" size={15} /> Comment lire ces chiffres</h4>
-            <ul>
-              <li><strong>La médiane</strong> est le résultat du milieu : une fois sur deux on fait mieux, une fois sur deux moins bien.</li>
-              <li><strong>La fourchette s'élargit avec le temps</strong> : plus l'horizon est long, plus les écarts possibles sont grands, mais les versements réguliers lissent le prix d'achat.</li>
-              <li>
-                <strong>Les variations</strong> viennent de l'historique réel : volatilité de{' '}
-                {(projection.annual_volatility * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % par an,
-                mesurée depuis le {formatDate(projection.history_start)} ({projection.history_sessions} séances).
-              </li>
-              <li>
-                <strong>
-                  Les rendements de {formatRates(projection.scenarios)} % par an
-                  sont des hypothèses
-                </strong>, pas des prévisions : personne ne connaît
-                la tendance future. Frais, impôts et inflation ne sont pas déduits.
-              </li>
-            </ul>
-          </div>
         </>
       )}
     </div>

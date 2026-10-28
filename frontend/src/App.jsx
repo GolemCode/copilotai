@@ -170,7 +170,7 @@ const UNLISTED_PRESETS = [
 const NON_LISTED_TICKERS = UNLISTED_PRESETS.map(p => p.ticker);
 
 function App() {
-  const [activeTab, setActiveTab] = useState('plan'); // 'plan' | 'portfolio' | 'simulation'
+  const [activeTab, setActiveTab] = useState('portfolio'); // 'portfolio' | 'plan' | 'simulation'
   const [selectedLookThroughTicker, setSelectedLookThroughTicker] = useState(null);
   const [selectedAssetForTransactions, setSelectedAssetForTransactions] = useState(null);
   const [openMenuTicker, setOpenMenuTicker] = useState(null);
@@ -289,23 +289,21 @@ function App() {
   const metricsData = metricsRequest ? metricsState.data : null;
   const isMetricsLoading = Boolean(metricsRequest) && metricsState.request !== metricsRequest;
 
-  // 3. Performance réelle reconstituée à partir des transactions enregistrées (TWR, XIRR, benchmark)
+  // 3. Performance réelle reconstituée à partir des transactions (TWR) : affichée en chiffre seulement
   const performanceRequest = useMemo(() => (
     portfolio.length > 0
       ? JSON.stringify({
-        benchmark: benchmarkTicker,
         refresh: dataRefreshTick,
         transactions: portfolio.map(a => [a.ticker, (a.transactions || []).map(t => t.id)])
       })
       : null
-  ), [portfolio, benchmarkTicker, dataRefreshTick]);
+  ), [portfolio, dataRefreshTick]);
   const [performanceState, setPerformanceState] = useState({ request: null, data: null });
 
   useEffect(() => {
     if (!performanceRequest) return undefined;
     let cancelled = false;
-    const { benchmark } = JSON.parse(performanceRequest);
-    fetch(`/api/v1/portfolio/performance?benchmark=${encodeURIComponent(benchmark)}`)
+    fetch('/api/v1/portfolio/performance')
       .then(r => (r.ok ? r.json() : null))
       .then(data => { if (!cancelled) setPerformanceState({ request: performanceRequest, data }); })
       .catch(err => {
@@ -674,23 +672,23 @@ function App() {
         <header className="app-header">
           <div>
             <h1 className="main-title">Copilot AI</h1>
-            <p className="main-subtitle">Simulez vos futurs investissements en ETF, suivez votre portefeuille et interrogez l'assistant documentaire</p>
+            <p className="main-subtitle">Suivez votre portefeuille, simulez vos futurs achats d'ETF et interrogez l'assistant documentaire</p>
           </div>
 
           {/* Sélecteur d'onglets */}
           <nav className="tab-navigation">
             <div className="tab-buttons-group">
               <button
-                className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
-                onClick={() => setActiveTab('plan')}
-              >
-                <Icon name="plan" /> Simuler mes achats
-              </button>
-              <button
                 className={`tab-btn ${activeTab === 'portfolio' ? 'active' : ''}`}
                 onClick={() => setActiveTab('portfolio')}
               >
                 <Icon name="portfolio" /> Mon portefeuille
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`}
+                onClick={() => setActiveTab('plan')}
+              >
+                <Icon name="plan" /> Simuler mes achats
               </button>
               <button
                 className={`tab-btn ${activeTab === 'simulation' ? 'active' : ''}`}
@@ -712,7 +710,7 @@ function App() {
           </nav>
         </header>
 
-        {/* --- ONGLET 0 : SIMULATEUR D'ACHATS (accueil) --- */}
+        {/* --- SIMULATEUR D'ACHATS --- */}
         {activeTab === 'plan' && <SavingsPlanSimulator portfolioAllocation={planAllocation} />}
 
         {/* Section 1 : Sélecteur et Recherche d'Actifs (suivi du portefeuille) */}
@@ -1162,9 +1160,7 @@ function App() {
               {/* Historique de valorisation et comparaison au benchmark */}
               <div className="history-chart-fullwidth">
                 <PortfolioHistoryChart
-                  timeSeries={performanceData?.time_series || []}
                   holdingsSeries={holdingsHistory?.time_series || []}
-                  emptyMessage={performanceData?.message}
                   benchmarkTicker={benchmarkTicker}
                   currentPeriod={historicalYears}
                   onPeriodChange={(yr) => setHistoricalYears(yr)}

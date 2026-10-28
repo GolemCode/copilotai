@@ -50,36 +50,17 @@ const DEFAULT_COMPARISON_BENCHMARKS = [
   { id: 'AGG', name: 'Obligations US (ETF AGG)', symbol: 'AGG', ticker: 'AGG', value: null, change_pct: null }
 ];
 
-/**
- * Historique RÉEL du portefeuille (reconstitué à partir des transactions) :
- * - courbe en euros : valeur détenue + dividendes perçus, apports compris ;
- * - pourcentages : indice TWR, qui neutralise les apports et retraits ;
- * - benchmark : mêmes versements investis dans l'indice de référence.
- */
-// Deux vues : valeur historique des positions actuelles (continue) ou performance réelle depuis les achats
-const VIEW_MODES = {
-  holdings: {
-    label: 'Positions actuelles',
-    tag: 'Valeur historique des positions actuelles',
-    tagTitle: "Quantités détenues aujourd'hui × cours de clôture passés (EUR), hors dividendes",
-    subtitle: 'variation de valeur des positions actuelles',
-    benchHint: "Cliquez sur un indice pour comparer : indice ramené à la même valeur de départ",
-    empty: 'Ajoutez une ligne cotée au portefeuille pour afficher sa valeur historique.'
-  },
-  real: {
-    label: 'Performance réelle',
-    tag: 'Valeur réelle + dividendes perçus',
-    tagTitle: 'Valeur détenue + dividendes perçus ; le pourcentage est le rendement pondéré dans le temps (TWR), hors effet des apports',
-    subtitle: 'gain hors apports, performance TWR',
-    benchHint: "Cliquez sur un indice pour comparer : mêmes versements investis dans l'indice",
-    empty: "Ajoutez une opération sur un actif coté pour afficher l'historique réel du portefeuille."
-  }
+// Valeur historique des positions actuelles : quantités du jour × cours de clôture passés (EUR)
+const VIEW = {
+  tag: 'Valeur historique des positions actuelles',
+  tagTitle: "Quantités détenues aujourd'hui × cours de clôture passés (EUR), hors dividendes",
+  subtitle: 'variation de valeur des positions actuelles',
+  benchHint: 'Cliquez sur un indice pour comparer : indice ramené à la même valeur de départ',
+  empty: 'Ajoutez une ligne cotée au portefeuille pour afficher sa valeur historique.'
 };
 
 export const PortfolioHistoryChart = ({
-  timeSeries = [],
   holdingsSeries = [],
-  emptyMessage = null,
   benchmarkTicker = 'SPY',
   onPeriodChange,
   onBenchmarkChange,
@@ -87,9 +68,8 @@ export const PortfolioHistoryChart = ({
   comparisonBenchmarks = []
 }) => {
   const [activeTimeframe, setActiveTimeframe] = useState('1m');
-  const [viewMode, setViewMode] = useState('holdings');
-  const view = VIEW_MODES[viewMode];
-  const series = viewMode === 'holdings' ? holdingsSeries : timeSeries;
+  const view = VIEW;
+  const series = holdingsSeries;
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
   const [selectedBenchmarkTicker, setSelectedBenchmarkTicker] = useState(benchmarkTicker || 'SPY');
@@ -205,28 +185,11 @@ export const PortfolioHistoryChart = ({
     }
   };
 
-  const viewSelector = (
-    <div className="chart-timeframe-segment" role="group" aria-label="Vue du graphique">
-      {Object.entries(VIEW_MODES).map(([id, mode]) => (
-        <button
-          key={id}
-          type="button"
-          className={`chart-segment-btn ${viewMode === id ? 'active' : ''}`}
-          onClick={() => setViewMode(id)}
-          title={mode.tagTitle}
-        >
-          {mode.label}
-        </button>
-      ))}
-    </div>
-  );
-
   if (!series || series.length === 0) {
     return (
       <div className="portfolio-history-card">
-        {viewSelector}
         <div className="empty-history-box">
-          <p>{(viewMode === 'real' && emptyMessage) || view.empty}</p>
+          <p>{view.empty}</p>
         </div>
       </div>
     );
@@ -242,7 +205,6 @@ export const PortfolioHistoryChart = ({
       <div className="portfolio-chart-header">
         <div className="chart-header-main">
           <div className="chart-kpi-block">
-            {viewSelector}
             <span className="chart-category-tag" title={view.tagTitle}>
               {view.tag}
             </span>

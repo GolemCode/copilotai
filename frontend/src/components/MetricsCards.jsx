@@ -1,9 +1,9 @@
 import { formatDate, formatPct, toneClass } from '../utils/format';
 
 /**
- * Indicateurs clés.
- * - performance : performance RÉELLE reconstituée à partir des transactions (TWR, XIRR, risque réalisé).
- * - summary : risque EX-ANTE de la composition actuelle (poids actuels appliqués à l'historique).
+ * Indicateurs clés du portefeuille.
+ * - performance : performance RÉELLE depuis les achats (TWR), reconstituée à partir des transactions.
+ * - summary : composition actuelle appliquée à l'historique de cours (poids d'aujourd'hui, période choisie).
  */
 export const MetricsCards = ({
   summary = null,
@@ -11,42 +11,37 @@ export const MetricsCards = ({
   totalCurrentValue = null,
   totalCostBasis = null
 }) => {
-  if (!summary && !performance) {
+  if (!summary) {
     return null;
   }
 
   // 1. Valorisation et plus-value latente (positions détenues, prix de revient)
-  const portVal = totalCurrentValue ?? summary?.final_value ?? 0;
+  const portVal = totalCurrentValue ?? summary.final_value ?? 0;
   const costBasis = totalCostBasis ?? 0;
   const unrealizedPnl = portVal - costBasis;
   const unrealizedPnlPct = costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : null;
 
   // 2. Performance réelle : annualisée seulement au-delà d'un an (règle GIPS)
-  const perfValue = performance
+  const realPerf = performance
     ? (performance.is_annualized ? performance.twr_annualized_pct : performance.twr_cumulative_pct)
     : null;
-  const perfSubtitle = performance
+  const realPerfSubtitle = performance
     ? (performance.is_annualized
-      ? `Annualisée depuis le ${formatDate(performance.start_date)}${performance.mwr_annualized_pct != null ? ` · XIRR ${formatPct(performance.mwr_annualized_pct, true)}` : ''}`
-      : `Cumulée depuis le ${formatDate(performance.start_date)} (moins d'un an : non annualisée)`)
+      ? `Annualisée depuis le ${formatDate(performance.start_date)}`
+      : `Depuis le ${formatDate(performance.start_date)}, hors effet des apports`)
     : 'Aucune opération sur un actif coté';
 
-  // 3. Sharpe et volatilité : réalisés si l'historique est suffisant, sinon ex-ante
-  const hasRealizedRisk = performance && performance.sharpe_ratio !== null && performance.sharpe_ratio !== undefined;
-  const sharpe = hasRealizedRisk ? performance.sharpe_ratio : summary?.sharpe_ratio;
-  const sharpeLabel = hasRealizedRisk ? 'Ratio de Sharpe (réalisé)' : 'Ratio de Sharpe (ex-ante)';
-  const riskFree = performance?.risk_free_rate_pct ?? summary?.risk_free_rate_pct;
-  const riskFreeSource = performance?.risk_free_source ?? summary?.risk_free_source;
-
-  const volatility = hasRealizedRisk ? performance.volatility_pct : summary?.annualized_volatility_pct;
-  const volatilityLabel = hasRealizedRisk ? 'Volatilité annuelle (réalisée)' : 'Volatilité annuelle (ex-ante)';
-  const exAnteYears = summary?.history_days ? Math.round(summary.history_days / 252) : null;
+  // 3. Performance historique : ce qu'aurait rapporté la composition actuelle sur la période
+  const historyYears = summary.history_days ? summary.history_days / (summary.trading_days_per_year || 252) : null;
+  const periodLabel = historyYears
+    ? `${historyYears.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} an${historyYears >= 2 ? 's' : ''}`
+    : null;
 
   return (
     <div className="metrics-cards-grid metrics-cards-clean">
       {/* 1. Valorisation et plus-value latente */}
-      <div className="kpi-card border-kpi-blue">
-        <span className="kpi-title">Valorisation du Portefeuille</span>
+      <div className="kpi-card">
+        <span className="kpi-title">Valorisation du portefeuille</span>
         <div className="kpi-value">
           {portVal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
         </div>
@@ -58,39 +53,42 @@ export const MetricsCards = ({
         </div>
       </div>
 
-      {/* 2. Performance réelle (pondérée dans le temps) */}
-      <div className="kpi-card border-kpi-emerald">
-        <span className="kpi-title" title="Rendement pondéré dans le temps : neutralise les apports et retraits">
-          Performance réelle (TWR)
+      {/* 2. Performance réelle depuis les achats (pondérée dans le temps) */}
+      <div className="kpi-card">
+        <span className="kpi-title" title="Rendement pondéré dans le temps (TWR) : neutralise les apports et retraits">
+          Performance réelle
         </span>
-        <div className={`kpi-value ${toneClass(perfValue)}`}>
-          {formatPct(perfValue, true)}
+        <div className={`kpi-value ${toneClass(realPerf)}`}>
+          {formatPct(realPerf, true)}
         </div>
-        <div className="kpi-subtitle">{perfSubtitle}</div>
+        <div className="kpi-subtitle">{realPerfSubtitle}</div>
       </div>
 
-      {/* 3. Ratio de Sharpe */}
-      <div className="kpi-card border-kpi-indigo">
-        <span className="kpi-title">{sharpeLabel}</span>
-        <div className="kpi-value">
-          {sharpe !== null && sharpe !== undefined ? sharpe.toFixed(2) : '—'}
-        </div>
-        <div className="kpi-subtitle" title={riskFreeSource || undefined}>
-          Taux sans risque {riskFree !== null && riskFree !== undefined ? `${riskFree.toFixed(2)} %` : 'indisponible'}
-          {riskFreeSource ? ` (${riskFreeSource})` : ''}
-        </div>
-      </div>
-
-      {/* 4. Volatilité */}
-      <div className="kpi-card border-kpi-amber">
-        <span className="kpi-title">{volatilityLabel}</span>
-        <div className="kpi-value">
-          {formatPct(volatility)}
+      {/* 3. Performance historique de la composition actuelle */}
+      <div className="kpi-card">
+        <span className="kpi-title" title="Positions actuelles appliquées aux cours passés, dividendes réinvestis">
+          Performance historique{periodLabel ? ` (${periodLabel})` : ''}
+        </span>
+        <div className={`kpi-value ${toneClass(summary.total_return_pct)}`}>
+          {formatPct(summary.total_return_pct, true)}
         </div>
         <div className="kpi-subtitle">
-          {hasRealizedRisk && summary?.annualized_volatility_pct != null
-            ? `Ex-ante (poids actuels, ${exAnteYears ?? '?'} ans) : ${formatPct(summary.annualized_volatility_pct)}`
-            : 'Poids actuels appliqués aux rendements historiques'}
+          Soit {formatPct(summary.annualized_return_pct, true)} par an · pire baisse {formatPct(summary.max_drawdown_pct)}
+        </div>
+      </div>
+
+      {/* 4. Risque : volatilité et ratio de Sharpe sur la même période */}
+      <div className="kpi-card">
+        <span className="kpi-title">Volatilité annuelle</span>
+        <div className="kpi-value">
+          {formatPct(summary.annualized_volatility_pct)}
+        </div>
+        <div
+          className="kpi-subtitle"
+          title={summary.risk_free_source ? `Taux sans risque : ${summary.risk_free_source}` : undefined}
+        >
+          Ratio de Sharpe {summary.sharpe_ratio != null ? summary.sharpe_ratio.toFixed(2) : '—'}
+          {summary.risk_free_rate_pct != null ? ` (taux sans risque ${summary.risk_free_rate_pct.toFixed(2)} %)` : ''}
         </div>
       </div>
     </div>
