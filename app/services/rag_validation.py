@@ -1,10 +1,11 @@
 """
 Fonctions de contrôle du pipeline RAG, sans dépendance lourde (testables isolément) :
 - conversion distance pgvector -> similarité cosinus réelle et seuil de pertinence ;
+- sélection des fiches transmises au modèle, puis des sources affichées ;
 - vérification a posteriori que les chiffres cités par le LLM figurent dans ses sources.
 """
 import re
-from typing import Iterable, List, Set
+from typing import Any, Dict, Iterable, List, Set
 
 # Seuil sur la similarité cosinus RÉELLE (et non sur (1 + cos) / 2).
 # pgvector (stratégie COSINE de langchain_postgres) renvoie une distance d = 1 - cos(θ), dans [0, 2].
@@ -102,3 +103,73 @@ def find_unverified_numbers(answer: str, reference_texts: Iterable[str]) -> List
         if not is_verified and num["raw"] not in unverified:
             unverified.append(num["raw"])
     return unverified
+
+
+# --- Sélection des fiches et des sources -----------------------------------------------------------
+
+# Fiches transmises au modèle : assez pour comparer quelques fonds, pas au point de noyer la réponse
+MAX_CONTEXT_DOCUMENTS = 5
+MAX_DIRECT_DOCUMENTS = 8
+# Quand des actifs sont cités dans la question, la recherche sémantique n'apporte qu'un complément
+MAX_SEMANTIC_COMPLEMENT = 2
+# Écart toléré au meilleur score sémantique (points de similarité cosinus × 100) : avec un modèle
+# d'embedding qui donne des cosinus modestes et serrés, un seuil absolu seul laisse passer du bruit
+RELATIVE_SCORE_MARGIN_PCT = 8.0
+MAX_DISPLAYED_SOURCES = 5
+
+_PORTFOLIO_REFERENCE = re.compile(
+    r"\b(?:mon|ma|mes)\s+(?:portefeuille|etf|positions?|lignes?|placements?|investissements?|fonds|actifs?)\b",
+    re.IGNORECASE,
+)
+
+
+def refers_to_portfolio(query: str) -> bool:
+    """La question porte-t-elle sur le portefeuille de l'utilisateur (« mes ETF », « mon portefeuille »...) ?"""
+    return bool(_PORTFOLIO_REFERENCE.search(query or ""))
+
+
+def select_context_documents(
+    direct_docs: List[Dict[str, Any]],
+    semantic_docs: List[Dict[str, Any]],
+    max_docs: int = MAX_CONTEXT_DOCUMENTS,
+    margin_pct: float = RELATIVE_SCORE_MARGIN_PCT,
+) -> List[Dict[str, Any]]:
+    """
+    Fiches des actifs cités d'abord (recherche exacte), puis résultats sémantiques proches du meilleur score.
+    """
+    direct = direct_docs[:MAX_DIRECT_DOCUMENTS]
+    direct_tickers = {d.get("ticker") for d in direct}
+    semantic = [d for d in semantic_docs if d.get("ticker") not in direct_tickers]
+    if semantic:
+        best = max(d.get("similarity_score_pct") or 0.0 for d in semantic)
+        semantic = [d for d in semantic if (d.get("similarity_score_pct") or 0.0) >= best - margin_pct]
+
+    room = max(max_docs - len(direct), 0)
+    if direct:
+        room = min(room, MAX_SEMANTIC_COMPLEMENT)
+    return direct + semantic[:room]
+
+
+def _ticker_cited(ticker: str, text: str) -> bool:
+    """Ticker cité dans le texte, en entier (CW8.PA) ou par sa racine (CW8), comme un mot isolé."""
+    clean = (ticker or "").strip().upper()
+    if not clean:
+        return False
+    keys = {clean, clean.split(".")[0]}
+    return any(re.search(rf"(?<![A-Z0-9]){re.escape(key)}(?![A-Z0-9])", text) for key in keys if len(key) >= 2)
+
+
+def select_cited_sources(
+    sources: List[Dict[str, Any]],
+    answer: str,
+    max_sources: int = MAX_DISPLAYED_SOURCES,
+) -> List[Dict[str, Any]]:
+    """
+    Sources affichées : parmi les fiches transmises au modèle, celles que la réponse cite.
+    Réponse générale sans ticker cité : les fiches demandées explicitement, à défaut les deux plus proches.
+    """
+    cited = [s for s in sources if _ticker_cited(s.get("ticker", ""), answer)]
+    if cited:
+        return cited[:max_sources]
+    direct = [s for s in sources if s.get("match_type") == "direct"]
+    return (direct or sources[:2])[:max_sources]

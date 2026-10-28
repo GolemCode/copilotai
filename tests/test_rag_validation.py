@@ -116,10 +116,56 @@ def test_ask_financial_assistant_flags_unverified_numbers(monkeypatch):
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
     monkeypatch.setattr(llm, "client", fake_client)
     monkeypatch.setattr(llm, "search_similar_documents", lambda *a, **kw: retrieved)
-    monkeypatch.setattr(llm, "fetch_source_for_ticker", lambda ticker: None)
+    monkeypatch.setattr(llm, "get_documents_for_tickers", lambda tickers: [])
 
     result = asyncio.run(llm.ask_financial_assistant("Quel est mon chevauchement sur XDPE ?"))
 
     assert result["unverified_numbers"] == ["13,4 %"]
     assert "Vérification automatique" in result["answer"]
     assert result["sources"][0]["match_type"] == "semantic"
+
+
+def _doc(ticker, score=None, match_type="semantic"):
+    return {"ticker": ticker, "similarity_score_pct": score, "match_type": match_type}
+
+
+def test_context_keeps_cited_assets_and_only_close_semantic_matches():
+    from app.services.rag_validation import select_context_documents
+
+    direct = [_doc("CW8.PA", match_type="direct")]
+    semantic = [_doc("VWCE.DE", 46.0), _doc("WPEA.PA", 41.0), _doc("PUST.PA", 38.0), _doc("XEON.DE", 37.0)]
+    selected = [d["ticker"] for d in select_context_documents(direct, semantic)]
+    # Fiche citée d'abord, puis au plus deux compléments à moins de 8 points du meilleur score
+    assert selected == ["CW8.PA", "VWCE.DE", "WPEA.PA"]
+
+
+def test_context_without_cited_asset_drops_distant_matches():
+    from app.services.rag_validation import select_context_documents
+
+    semantic = [_doc("CW8.PA", 52.0), _doc("WPEA.PA", 49.0), _doc("XEON.DE", 33.0)]
+    assert [d["ticker"] for d in select_context_documents([], semantic)] == ["CW8.PA", "WPEA.PA"]
+
+
+def test_displayed_sources_are_those_cited_in_the_answer():
+    from app.services.rag_validation import select_cited_sources
+
+    sources = [_doc("CW8.PA", match_type="direct"), _doc("VWCE.DE", 46.0), _doc("XEON.DE", 37.0)]
+    answer = "**CW8.PA** : frais courants de 0,38 %, contre 0,19 % pour VWCE."
+    assert [s["ticker"] for s in select_cited_sources(sources, answer)] == ["CW8.PA", "VWCE.DE"]
+    # « PE500 » ne doit pas valoir citation de « PE5 », ni « CW8 » dans « XCW80 »
+    assert select_cited_sources([_doc("CW8.PA", 50.0)], "Voir XCW80 et PE500.")[0]["ticker"] == "CW8.PA"
+
+
+def test_uncited_answer_falls_back_to_requested_sheets():
+    from app.services.rag_validation import select_cited_sources
+
+    sources = [_doc("CW8.PA", match_type="direct"), _doc("VWCE.DE", 46.0)]
+    assert [s["ticker"] for s in select_cited_sources(sources, "Réponse générale sans ticker.")] == ["CW8.PA"]
+
+
+def test_portfolio_reference_detection():
+    from app.services.rag_validation import refers_to_portfolio
+
+    assert refers_to_portfolio("Quels sont les frais de mes ETF ?")
+    assert refers_to_portfolio("Les points faibles de mon portefeuille")
+    assert not refers_to_portfolio("Que contient un ETF MSCI World ?")

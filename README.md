@@ -19,7 +19,7 @@ qu'il n'a pas trouvé dans ses sources.
 | Monte Carlo | Mouvement brownien géométrique multi-actifs corrélé (Cholesky), 10 000 trajectoires, VaR et Expected Shortfall 95 % exprimées en perte, graine optionnelle, stratégie DCA en euros |
 | Stress tests | Pires épisodes réellement observés (pire baisse, pire mois du portefeuille, pire mois du marché) rejoués sur les positions actuelles, bêtas historiques |
 | Look-through et géographie | Principales positions, répartition par pays et par secteur des ETF (Yahoo Finance, JustETF) |
-| Assistant RAG | Recherche sémantique (pgvector, similarité cosinus) sur les fiches d'ETF, réponse LLM (Groq), vérification automatique des chiffres cités |
+| Assistant RAG | Recherche hybride sur les fiches d'ETF (actifs cités ou détenus, puis pgvector par similarité cosinus), réponse LLM (Groq), sources affichées limitées aux fiches citées dans la réponse, vérification automatique des chiffres cités |
 
 ## Architecture
 
@@ -83,7 +83,7 @@ Règles de collecte ([app/services/market_data.py](app/services/market_data.py))
 | Simulateur d'achats | Pas mensuel, portefeuille rééquilibré de volatilité σ_p = √(wᵀΣw) estimée sur l'historique ; rendement annuel espéré fixé par hypothèse (μ_log mensuel = ln(1 + r)/12 − σ²/2), mêmes tirages pour les trois hypothèses ; versements investis en fin de mois, hors frais, impôts et inflation |
 | Stress tests | Rendement réalisé de chaque actif sur la fenêtre historique, appliqué à la valeur actuelle de la ligne ; bêtas de Dimson (décalage d'une séance) |
 | Clôtures non synchrones | Paris clôture avant New York : corrélations et bêtas quotidiens sont biaisés vers zéro. Covariances du Monte Carlo estimées sur blocs de 5 séances, bêtas de Dimson |
-| RAG | Seuil sur la similarité cosinus réelle (0,30, à calibrer) ; chiffres de la réponse vérifiés contre le contexte fourni au LLM |
+| RAG | Seuil sur la similarité cosinus réelle (0,30, à calibrer), puis écart d'au plus 8 points au meilleur résultat ; 5 fiches au plus transmises au LLM ; chiffres de la réponse vérifiés contre ce contexte |
 
 ## Démarrage (Docker)
 

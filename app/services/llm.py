@@ -5,9 +5,13 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from groq import AsyncGroq
 
-from app.core.settings import PSYCOPG_CONNINFO
 from app.services.rag_ingestion import find_explicit_tickers, get_documents_for_tickers, search_similar_documents
-from app.services.rag_validation import find_unverified_numbers
+from app.services.rag_validation import (
+    find_unverified_numbers,
+    refers_to_portfolio,
+    select_cited_sources,
+    select_context_documents,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,70 +69,6 @@ def extract_doc_structured_info(content: str) -> Dict[str, Any]:
     info["paris_aligned"] = "paris aligned" in name_line.lower().replace("-", " ")
     return info
 
-def fetch_source_for_ticker(ticker: str) -> Optional[Dict[str, Any]]:
-    """Source à afficher pour un ticker cité : sa fiche indexée, sinon sa ligne du référentiel d'actifs."""
-    clean = ticker.strip().upper()
-    clean_base = clean.split(".")[0]
-    if len(clean_base) < 2:
-        return None
-
-    docs = get_documents_for_tickers([clean])
-    if docs:
-        doc = docs[0]
-        content = doc["content"]
-        parsed_info = extract_doc_structured_info(content)
-        snippet = content[:240] + "..." if len(content) > 240 else content
-        return {
-            "ticker": doc["ticker"],
-            "name": doc["name"],
-            "category": doc["category"],
-            # Source récupérée par ticker exact, pas par recherche sémantique : pas de score
-            "similarity_score_pct": None,
-            "match_type": "direct",
-            "snippet": snippet,
-            "strategy": parsed_info.get("strategy") or snippet,
-            "aum": parsed_info.get("aum"),
-            "holdings": parsed_info.get("holdings", []),
-            "paris_aligned": parsed_info.get("paris_aligned", False),
-            "source_url": doc["source_url"],
-            "pdf_url": doc.get("pdf_url") or f"https://www.justetf.com/fr/search.html?search=ETFS&query={clean_base}",
-            "provider": doc["provider"],
-        }
-
-    try:
-        import psycopg
-        with psycopg.connect(PSYCOPG_CONNINFO) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT ticker, name, asset_class, sector
-                    FROM assets
-                    WHERE UPPER(ticker) = %s OR UPPER(ticker) = %s OR UPPER(ticker) LIKE %s
-                    LIMIT 1;
-                """, (clean, clean_base, f"{clean_base}.%"))
-                asset_row = cur.fetchone()
-    except Exception as e:
-        logger.warning(f"Erreur lors de la récupération directe de la source pour {ticker} : {e}")
-        return None
-    if not asset_row:
-        return None
-    t, n, ac, sec = asset_row
-    category = ac or sec or "Actif Coté"
-    desc_clean = f"Actif financier {n or t} ({category}) coté sous le symbole {t}."
-    return {
-        "ticker": t,
-        "name": n or t,
-        "category": category,
-        "similarity_score_pct": None,
-        "match_type": "direct",
-        "snippet": desc_clean,
-        "strategy": desc_clean,
-        "aum": None,
-        "holdings": [],
-        "paris_aligned": False,
-        "source_url": f"https://finance.yahoo.com/quote/{t}",
-        "pdf_url": f"https://www.justetf.com/fr/search.html?search=ETFS&query={clean_base}",
-        "provider": "Bourse & Marché Financier",
-    }
 
 OFF_TOPIC_TERMS = [
     "crepe", "crêpe", "recette", "cuisine", "gâteau", "gateau", "cuisinez", "cuisiner",
@@ -322,15 +262,18 @@ async def ask_financial_assistant(
     
     # 1. Recherche vectorielle dans PGVector avec score cosinus et déduplication par ticker
     try:
-        semantic_docs = search_similar_documents(user_query, k=30, max_results=10)
+        semantic_docs = search_similar_documents(user_query, k=30, max_results=6)
     except Exception as e:
         logger.error(f"Erreur de recherche vectorielle : {e}")
         semantic_docs = []
 
-    # Recherche hybride : fiches des tickers cités explicitement d'abord, puis résultats sémantiques
-    direct_docs = get_documents_for_tickers(find_explicit_tickers(user_query))
-    direct_tickers = {d["ticker"] for d in direct_docs}
-    retrieved_docs = (direct_docs + [d for d in semantic_docs if d.get("ticker") not in direct_tickers])[:10]
+    # Recherche hybride : fiches des actifs cités (dans la question, ou les lignes détenues quand la
+    # question porte sur « mon portefeuille » / « mes ETF »), puis résultats sémantiques proches du meilleur
+    explicit_tickers = find_explicit_tickers(user_query)
+    if portfolio_context and refers_to_portfolio(user_query):
+        explicit_tickers += [p["ticker"] for p in portfolio_context.get("positions", []) if p.get("ticker")]
+    direct_docs = get_documents_for_tickers(explicit_tickers)
+    retrieved_docs = select_context_documents(direct_docs, semantic_docs)
 
     # Formatage des sources pour le client frontend
     sources_summary: List[Dict[str, Any]] = []
@@ -506,50 +449,10 @@ Contexte documentaire :
                     portfolio_context=portfolio_context
                 )
 
+            # Sources affichées : fiches réellement transmises au modèle ET citées dans sa réponse
             final_sources: List[Dict[str, Any]] = []
-            seen_source_tickers = set()
-
             if not is_off_topic_reply and len(clean_answer) > 40:
-                # 1. Sources issues de la recherche vectorielle : le seuil de similarité cosinus
-                # est déjà appliqué dans search_similar_documents, aucun second filtre ici.
-                for s in sources_summary:
-                    final_sources.append(s)
-                    tick = (s.get("ticker") or "").upper().strip()
-                    if tick:
-                        seen_source_tickers.add(tick)
-                        seen_source_tickers.add(tick.split(".")[0])
-
-                # 2. Détection dynamique de tous les tickers boursiers cités dans la réponse ou le portefeuille
-                candidate_tickers = set()
-                # Tickers en gras, entre guillemets, ou en code (ex: **SPY**, `CW8.PA`, **AGG**, **EMB**, **GLD**)
-                for match in re.finditer(r"[\*`\"']{1,2}([A-Z][A-Z0-9]{1,5}(?:\.[A-Z]{2})?)[\*`\"']{1,2}", clean_answer):
-                    candidate_tickers.add(match.group(1).upper())
-                
-                # Tickers entre parenthèses ou mots-clés boursiers
-                for match in re.finditer(r"\b([A-Z][A-Z0-9]{1,5}(?:\.[A-Z]{2})?)\b", clean_answer):
-                    cand = match.group(1).upper()
-                    if cand in ["SPY", "QQQ", "AGG", "EMB", "GLD", "TLT", "CW8", "WPEA", "PE500", "PUST", "XEON", "ETZ", "CAC", "PAEEM", "IWM", "XLK", "XLF", "XLV", "XLE", "SMH", "SLV", "VTI", "VEA", "VWO", "PABZ"]:
-                        candidate_tickers.add(cand)
-
-                # Positions réelles du portefeuille
-                if portfolio_context:
-                    for pos in portfolio_context.get("positions", []):
-                        if pos.get("ticker"):
-                            candidate_tickers.add(pos["ticker"].upper())
-
-                # Requête de l'utilisateur
-                for match in re.finditer(r"\b([A-Z][A-Z0-9]{1,5}(?:\.[A-Z]{2})?)\b", user_query):
-                    candidate_tickers.add(match.group(1).upper())
-
-                # Récupération automatique de la fiche documentaire pour chaque ticker cité
-                for cand in candidate_tickers:
-                    cand_base = cand.split(".")[0]
-                    if cand not in seen_source_tickers and cand_base not in seen_source_tickers:
-                        extra_src = fetch_source_for_ticker(cand)
-                        if extra_src:
-                            final_sources.append(extra_src)
-                            seen_source_tickers.add(cand)
-                            seen_source_tickers.add(cand_base)
+                final_sources = select_cited_sources(sources_summary, clean_answer)
 
             # Vérification a posteriori : chaque chiffre de la réponse doit provenir de ce que le LLM
             # a réellement reçu (fiches du contexte, données du portefeuille, messages de l'utilisateur).
@@ -567,10 +470,9 @@ Contexte documentaire :
                         + ", ".join(f"`{n}`" for n in unverified_numbers) + "."
                     )
 
-            # Ne plus brider à 3 sources : inclure toutes les sources pertinentes (jusqu'à 12)
             return {
                 "answer": clean_answer,
-                "sources": final_sources[:12],
+                "sources": final_sources,
                 "suggested_questions": suggested_questions,
                 "unverified_numbers": unverified_numbers,
                 "latency_ms": latency
