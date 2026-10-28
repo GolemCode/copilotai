@@ -1,4 +1,5 @@
 import { ChatInterface } from './ChatInterface';
+import { Icon } from './Icon';
 import { useRagChat } from '../hooks/useRagChat';
 
 export const FloatingCopilot = ({
@@ -17,13 +18,11 @@ export const FloatingCopilot = ({
           type="button"
           className="copilot-fab-button"
           onClick={() => setIsOpen(true)}
-          title="Ouvrir le Copilot AI (Assistant RAG & Analyse)"
-          aria-label="Ouvrir le Copilot AI"
+          title="Ouvrir l'assistant documentaire"
+          aria-label="Ouvrir l'assistant documentaire"
         >
-          <div className="fab-glow-ring"></div>
-          <span className="fab-icon">✨</span>
-          <span className="fab-text">Copilot IA</span>
-          <span className="fab-status-dot" title="Connecté"></span>
+          <span className="fab-icon"><Icon name="assistant" size={18} /></span>
+          <span className="fab-text">Assistant</span>
         </button>
       </aside>
     );

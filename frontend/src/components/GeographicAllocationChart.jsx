@@ -35,7 +35,7 @@ export const GeographicAllocationChart = ({
   if (!geographicData || geographicData.length === 0) {
     return (
       <div className="empty-allocation-box">
-        <p>{isLoading ? "Extraction JustETF en cours..." : "Calcul de l'exposition géographique en cours..."}</p>
+        <p>{isLoading ? 'Chargement des répartitions par pays...' : "Aucune répartition géographique disponible."}</p>
       </div>
     );
   }
@@ -55,7 +55,7 @@ export const GeographicAllocationChart = ({
         <div>
           <h4 className="chart-title">Exposition Géographique</h4>
           <span className="chart-micro-subtitle">
-            {isLoading ? "Actualisation JustETF..." : (isLiveScraped ? "Ventilation scrapée en direct" : "Transparence réelle des sous-jacents")}
+            {isLoading ? 'Actualisation...' : (isLiveScraped ? 'Répartitions par pays publiées (JustETF, Yahoo Finance)' : 'Répartition par pays des positions')}
           </span>
         </div>
         {topRegion && (

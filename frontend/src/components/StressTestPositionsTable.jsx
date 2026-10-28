@@ -1,14 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getAssetCategory } from '../utils/assetClassifier';
+import { Icon } from './Icon';
 import { formatDate, getDisplayTicker, getExchangeName } from '../utils/format';
-
-const SCENARIO_ICONS = {
-  worst_period: '📉',
-  worst_month: '📅',
-  worst_market_month: '🌍',
-  monteCarloRisk: '🎲',
-  custom: '🎛️'
-};
 
 export const StressTestPositionsTable = ({
   portfolio = [],
@@ -173,8 +166,8 @@ export const StressTestPositionsTable = ({
       <div className="stress-card-header">
         <div>
           <div className="stress-title-row">
-            <h4 className="chart-title">Banc d'Essai & Matrice de Stress Test ({portfolio.length} actifs)</h4>
-            <span className="stress-badge-scenario">{SCENARIO_ICONS[selectedScenario.id]} {selectedScenario.name}</span>
+            <h4 className="chart-title">Stress tests ({portfolio.length} lignes)</h4>
+            <span className="stress-badge-scenario">{selectedScenario.name}</span>
           </div>
           <p className="section-subtitle">
             Pires épisodes réellement observés dans l'historique en base{stressData ? ` (${formatDate(stressData.history_start)} → ${formatDate(stressData.history_end)})` : ''}, rejoués sur vos positions actuelles
@@ -195,7 +188,6 @@ export const StressTestPositionsTable = ({
               className={`btn-stress-scenario-pill ${selectedScenario.id === sc.id ? 'active' : ''}`}
               onClick={() => setActiveScenarioId(sc.id)}
             >
-              <span className="pill-icon">{SCENARIO_ICONS[sc.id]}</span>
               <span className="pill-text">{sc.name}</span>
               <span className="pill-sub">{sc.period}</span>
             </button>
@@ -221,7 +213,7 @@ export const StressTestPositionsTable = ({
 
         {/* Description explicative du scénario */}
         <div className="scenario-explainer-box">
-          <span className="explainer-icon">{SCENARIO_ICONS[selectedScenario.id]}</span>
+          <span className="explainer-icon"><Icon name="info" size={16} /></span>
           <div className="explainer-content">
             <strong>{selectedScenario.name} ({selectedScenario.period}) :</strong> {selectedScenario.desc}
             {notModeledCount > 0 && (
@@ -279,7 +271,7 @@ export const StressTestPositionsTable = ({
               <th className="right">Choc Simulé</th>
               <th className="right">Perte sous Stress</th>
               <th className="right">Valeur Résiduelle</th>
-              <th className="center">Mode Look-Through</th>
+              <th className="center">Composition</th>
             </tr>
           </thead>
           <tbody>
@@ -348,7 +340,7 @@ export const StressTestPositionsTable = ({
                     </strong>
                   </td>
 
-                  {/* Mode Look-Through */}
+                  {/* Composition */}
                   <td className="center">
                     <button
                       type="button"
@@ -356,7 +348,7 @@ export const StressTestPositionsTable = ({
                       className="btn-table-lookthrough"
                       title={`Voir la décomposition par transparence de ${row.ticker}`}
                     >
-                      🔍 Look-Through
+                      <Icon name="search" size={14} /> Composition
                     </button>
                   </td>
                 </tr>

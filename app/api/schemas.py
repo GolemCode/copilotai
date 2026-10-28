@@ -14,6 +14,8 @@ class PortfolioSimulationRequest(BaseModel):
     strategy: Optional[Dict[str, Any]] = None
     # Graine optionnelle : même graine + mêmes données => mêmes trajectoires (reproductibilité)
     seed: Optional[int] = Field(default=None, ge=0)
+    # Dérive des log-rendements : "zero" = espérance de rendement nulle (prudent, défaut), "historical" = moyenne passée
+    drift: Literal["zero", "historical"] = "zero"
 
 class TaskSubmissionResponse(BaseModel):
     status: str

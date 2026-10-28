@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAssetCategory } from '../utils/assetClassifier';
+import { Icon } from './Icon';
 
 export const TransactionModal = ({
   ticker,
@@ -141,12 +142,12 @@ export const TransactionModal = ({
             </div>
             <h3 className="modal-fund-title">{assetName || ticker}</h3>
           </div>
-          <button className="transaction-close-btn" onClick={onClose} title="Fermer (Échap)">
-            ✕
+          <button className="transaction-close-btn" onClick={onClose} title="Fermer (Échap)" aria-label="Fermer">
+            <Icon name="close" />
           </button>
         </div>
 
-        {/* SECTION 1 : Formulaire Achat / Vente Google Finance */}
+        {/* SECTION 1 : formulaire d'achat ou de vente */}
         <div className="transaction-form-section">
           {/* Boutons de bascule Achat / Vente */}
           <div className="google-tx-mode-toggle">
@@ -259,7 +260,7 @@ export const TransactionModal = ({
 
             {errorMsg && <div className="form-error-text">{errorMsg}</div>}
 
-            {/* Boutons d'action Google Finance */}
+            {/* Boutons d'action */}
             <div className="google-actions-row">
               <button
                 type="button"
@@ -278,7 +279,7 @@ export const TransactionModal = ({
           </form>
         </div>
 
-        {/* SECTION 2 : Historique des opérations avec icônes Google Finance (Étiquette & Corbeille) */}
+        {/* SECTION 2 : historique des opérations */}
         <div className="transactions-history-section">
           <div className="history-header-row">
             <h4 className="transaction-section-title">
@@ -349,7 +350,7 @@ export const TransactionModal = ({
                           </strong>
                         </td>
                         <td className="center">
-                          {/* Suppression d'opération Google Finance (Corbeille) */}
+                          {/* Suppression d'une opération */}
                           <button
                             type="button"
                             className="btn-action-icon btn-action-trash"

@@ -143,19 +143,7 @@ body {
   color: #6d28d9;
 }
 
-.copilot-sparkle-icon {
-  font-size: 1rem;
-}
 
-.copilot-header-badge {
-  background: #ede9fe;
-  color: #6d28d9;
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 1px 6px;
-  border-radius: 10px;
-  letter-spacing: 0.5px;
-}
 
 /* Panneaux */
 .dashboard-panel {
@@ -1888,9 +1876,6 @@ body {
   margin-bottom: 8px;
 }
 
-.suggested-sparkle {
-  font-size: 0.85rem;
-}
 
 .suggested-questions-title {
   font-size: 0.73rem;
@@ -3346,10 +3331,6 @@ body {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
-.btn-stress-scenario-pill .pill-icon {
-  font-size: 1.1rem;
-  margin-bottom: 2px;
-}
 
 .btn-stress-scenario-pill .pill-text {
   font-size: 0.85rem;
@@ -3954,14 +3935,6 @@ body {
   letter-spacing: 0.3px;
 }
 
-.fab-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #34d399;
-  box-shadow: 0 0 8px #34d399;
-  display: inline-block;
-}
 
 /* 2. Widget Flottant en bas à droite (440px x 620px) */
 .copilot-widget-container {
@@ -4146,4 +4119,35 @@ body {
   font-size: 0.74rem;
   color: #3b82f6;
   margin-left: 8px;
+}
+
+/* Icônes SVG au trait (composant Icon) : alignées sur le texte qui les accompagne */
+.ui-icon {
+  display: inline-block;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+
+.tab-btn,
+.btn-header-copilot-trigger,
+.btn-sync-refresh,
+.btn-table-lookthrough,
+.source-action-btn,
+.source-verify-link,
+.empty-action-link,
+.sources-chevron,
+.user-author-tag,
+.bubble-latency,
+.suggested-question-arrow,
+.btn-remove-benchmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-alert-error,
+.lookthrough-error-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

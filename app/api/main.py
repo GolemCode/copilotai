@@ -47,6 +47,7 @@ from app.services.fund_data import load_fund_snapshot, refresh_fund_data
 from app.services.etf_screener import RAG_REFERENCE_TICKERS, get_popular_etfs
 from app.quant.estimation import weekly_covariance
 from app.quant.metrics import compute_portfolio_metrics
+from app.quant.monte_carlo import select_drift
 from app.quant.performance import compute_holdings_history, compute_realized_performance
 from app.quant.stress import compute_historical_stress
 from app.services.portfolio import (
@@ -193,12 +194,15 @@ async def run_simulation(
         if len(returns_matrix) < 2:
             raise HTTPException(status_code=400, detail="Données corrompues : impossible de calculer une matrice de covariance valide.")
 
-        # Moyenne des LOG-rendements journaliers = μ - σ²/2 (dérive d'Itô déjà incluse) :
-        # le moteur Monte Carlo l'utilise telle quelle, sans retirer une seconde fois σ²/2.
-        expected_returns = np.mean(returns_matrix, axis=0)
         # Covariance journalière estimée sur des blocs de 5 séances : neutralise la non-synchronicité
         # des clôtures Paris / New York, qui sous-estime les corrélations quotidiennes (et donc la VaR)
         covariance_matrix = weekly_covariance(returns_matrix)
+        # Dérive des log-rendements : nulle en espérance par défaut (prudent), ou moyenne historique
+        # (qui vaut μ - σ²/2 : la correction d'Itô y est déjà incluse, le moteur ne la retire pas une seconde fois)
+        try:
+            expected_returns = select_drift(np.mean(returns_matrix, axis=0), covariance_matrix, request.drift)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         transfer_df = pl.DataFrame({
             "ticker": tickers,

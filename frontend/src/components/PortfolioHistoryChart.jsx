@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
+import { Icon } from './Icon';
 
 // Formattage des dates à la française
 const formatFrenchDate = (dateStr, formatType = 'short') => {
@@ -271,8 +272,9 @@ export const PortfolioHistoryChart = ({
                     className="btn-remove-benchmark"
                     onClick={() => setIsComparing(false)}
                     title="Désactiver la comparaison"
+                    aria-label="Désactiver la comparaison"
                   >
-                    ✕
+                    <Icon name="close" size={12} />
                   </button>
                 </span>
               )}

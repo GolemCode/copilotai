@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 
 export const LookThroughModal = ({ ticker, onClose }) => {
   // Dernière réponse reçue, associée au ticker demandé : l'état de chargement s'en déduit
@@ -52,22 +53,22 @@ export const LookThroughModal = ({ ticker, onClose }) => {
           <div className="lookthrough-title-group">
             <div className="lookthrough-badge-row">
               <span className="lookthrough-ticker-badge">{ticker}</span>
-              <span className="lookthrough-tag-mode">🔍 Mode Look-Through</span>
+              <span className="lookthrough-tag-mode">Composition</span>
               {data?.is_etf === false && (
-                <span className="lookthrough-tag-equity">Action Individuelle</span>
+                <span className="lookthrough-tag-equity">Action</span>
               )}
             </div>
             <h2 className="lookthrough-fund-name">
-              {loading ? 'Chargement de la décomposition...' : (data?.name || ticker)}
+              {loading ? 'Chargement...' : (data?.name || ticker)}
             </h2>
             <div className="lookthrough-fund-meta">
-              {data?.fund_family && <span className="meta-item">🏛️ {data.fund_family}</span>}
-              {data?.category && <span className="meta-item">📁 {data.category}</span>}
-              {data?.benchmark && <span className="meta-item">🎯 Indice : {data.benchmark}</span>}
+              {data?.fund_family && <span className="meta-item">Émetteur : {data.fund_family}</span>}
+              {data?.category && <span className="meta-item">Catégorie : {data.category}</span>}
+              {data?.expense_ratio_pct != null && <span className="meta-item">Frais courants : {data.expense_ratio_pct.toFixed(2)} %</span>}
             </div>
           </div>
-          <button className="lookthrough-close-btn" onClick={onClose} title="Fermer (Échap)">
-            ✕
+          <button className="lookthrough-close-btn" onClick={onClose} title="Fermer (Échap)" aria-label="Fermer">
+            <Icon name="close" />
           </button>
         </div>
 
@@ -76,13 +77,13 @@ export const LookThroughModal = ({ ticker, onClose }) => {
           {loading && (
             <div className="lookthrough-loading-state">
               <div className="spinner"></div>
-              <p>Extraction de la décomposition Look-Through depuis les sources officielles...</p>
+              <p>Chargement de la composition...</p>
             </div>
           )}
 
           {error && (
             <div className="lookthrough-error-box">
-              ⚠️ Une erreur est survenue lors de la récupération des données : {error}
+              <Icon name="alert" size={14} /> Impossible de récupérer la composition : {error}
             </div>
           )}
 
@@ -98,7 +99,7 @@ export const LookThroughModal = ({ ticker, onClose }) => {
                       rel="noopener noreferrer"
                       className="source-verify-link"
                     >
-                      🔗 Fiche Yahoo Finance ({ticker}) ↗
+                      Cotation Yahoo Finance ({ticker}) <Icon name="external" size={12} />
                     </a>
                   )}
                   {data.factsheet_url && (
@@ -108,7 +109,7 @@ export const LookThroughModal = ({ ticker, onClose }) => {
                       rel="noopener noreferrer"
                       className="source-verify-link factsheet"
                     >
-                      {data.justetf_url ? "📄 Fiche JustETF (DICI & Inventaire) ↗" : "📄 Fiche KID & Factsheet Officielle ↗"}
+                      <Icon name="document" size={12} /> {data.justetf_url ? 'Fiche JustETF' : 'Fiche du fonds'} <Icon name="external" size={12} />
                     </a>
                   )}
                 </div>
@@ -179,7 +180,7 @@ export const LookThroughModal = ({ ticker, onClose }) => {
                 </div>
               ) : (
                 <div className="lookthrough-empty">
-                  <div className="empty-icon">📊</div>
+                  <div className="empty-icon"><Icon name="info" size={28} /></div>
                   <p className="empty-message">
                     {data.empty_message || "Aucune décomposition détaillée des sous-jacents n'est disponible dans le flux direct pour cet actif."}
                   </p>
@@ -190,7 +191,7 @@ export const LookThroughModal = ({ ticker, onClose }) => {
                       rel="noopener noreferrer"
                       className="empty-action-link"
                     >
-                      {data.justetf_url ? "Consulter la fiche détaillée et le DICI sur JustETF ↗" : "Consulter l'inventaire officiel sur Yahoo Finance ↗"}
+                      {data.justetf_url ? 'Consulter la fiche sur JustETF' : 'Consulter la fiche sur Yahoo Finance'} <Icon name="external" size={12} />
                     </a>
                   )}
                 </div>
@@ -198,11 +199,11 @@ export const LookThroughModal = ({ ticker, onClose }) => {
 
               <div className="lookthrough-footer-note">
                 {data.is_etf === false ? (
-                  <>ℹ️ <strong>Détention directe :</strong> Ce titre vif est une participation directe au capital de l'entreprise cotée sans frais de gestion intermédiaire.</>
+                  <><Icon name="info" size={13} /> <strong>Détention directe :</strong> action détenue en propre, sans fonds intermédiaire.</>
                 ) : (data.holdings && data.holdings.length > 0) ? (
-                  <>ℹ️ <strong>Transparence de portefeuille :</strong> Analyse par transparence des principales participations réelles pour mesurer la concentration sectorielle.</>
+                  <><Icon name="info" size={13} /> <strong>Principales positions</strong> publiées par l'émetteur ou JustETF, utiles pour mesurer la concentration.</>
                 ) : (
-                  <>ℹ️ <strong>Inventaire de portefeuille :</strong> Les positions obligataires négociées de gré à gré sont détaillées dans le rapport semestriel de l'émetteur.</>
+                  <><Icon name="info" size={13} /> <strong>Composition non publiée</strong> par nos sources : l'inventaire complet figure dans les rapports de l'émetteur.</>
                 )}
               </div>
             </>

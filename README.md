@@ -78,7 +78,7 @@ Règles de collecte ([app/services/market_data.py](app/services/market_data.py))
 | Sharpe, Sortino | Ex-post : moyenne des rendements excédentaires / écart-type (Sortino : écart à la baisse sur toutes les séances), × √252 |
 | Performance réelle | TWR par valorisation quotidienne (Dietz modifié journalier, flux en cours de journée) ; XIRR base 365 ; pas d'annualisation sous un an (GIPS) |
 | Risque ex-ante | Poids actuels appliqués à chaque séance historique |
-| Monte Carlo | Dérive = moyenne des log-rendements (correction d'Itô déjà incluse), covariance estimée sur blocs de 5 séances, chocs corrélés par Cholesky, VaR/ES 95 % = −quantile 5 % du PnL |
+| Monte Carlo | Dérive nulle par défaut (espérance de rendement nulle, μ_log = −σ²/2 : prudent, la moyenne historique étant très bruitée) ou moyenne historique des log-rendements (correction d'Itô déjà incluse), covariance estimée sur blocs de 5 séances, chocs corrélés par Cholesky, VaR/ES 95 % = −quantile 5 % du PnL |
 | Stress tests | Rendement réalisé de chaque actif sur la fenêtre historique, appliqué à la valeur actuelle de la ligne ; bêtas de Dimson (décalage d'une séance) |
 | Clôtures non synchrones | Paris clôture avant New York : corrélations et bêtas quotidiens sont biaisés vers zéro. Covariances du Monte Carlo estimées sur blocs de 5 séances, bêtas de Dimson |
 | RAG | Seuil sur la similarité cosinus réelle (0,30, à calibrer) ; chiffres de la réponse vérifiés contre le contexte fourni au LLM |

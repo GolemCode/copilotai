@@ -24,6 +24,25 @@ def nearest_positive_definite(
     # Garantie de symétrie (élimination des erreurs d'arrondi flottant)
     return (adjusted_matrix + adjusted_matrix.T) / 2.0
 
+DRIFT_MODES = ("zero", "historical")
+
+
+def select_drift(mean_log_returns, covariance_matrix, mode: str = "zero"):
+    """
+    Dérive journalière des log-rendements utilisée par la simulation.
+
+    - "zero" (défaut, prudent) : espérance de rendement nulle (martingale), soit μ_log = −σ²/2.
+      La moyenne historique sur quelques années est un estimateur très bruité (erreur-type σ/√années)
+      et, après une période haussière, rendrait la VaR optimiste.
+    - "historical" : moyenne historique des log-rendements (tendance passée prolongée).
+    """
+    if mode == "historical":
+        return np.asarray(mean_log_returns, dtype=float)
+    if mode == "zero":
+        return -0.5 * np.diag(np.atleast_2d(np.asarray(covariance_matrix, dtype=float)))
+    raise ValueError(f"Hypothèse de dérive inconnue : {mode} (valeurs possibles : {', '.join(DRIFT_MODES)}).")
+
+
 def apply_quantitative_strategy(full_paths, initial_investment, strategy_params):
     """
     Applique la stratégie d'investissement aux trajectoires de valeur du panier initial.

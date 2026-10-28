@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRagChat } from '../hooks/useRagChat';
 import { MarkdownContent } from './MarkdownContent';
 import { renderInline } from '../utils/renderInline';
+import { Icon } from './Icon';
 
 const QUICK_PROMPTS = [
   "Diagnostic : quels sont les risques et points faibles majeurs de mon portefeuille ?",
@@ -96,7 +97,7 @@ export const ChatInterface = ({
               title="Mettre en mode réduit"
               aria-label="Mettre en mode réduit"
             >
-              ✕
+              <Icon name="close" />
             </button>
           ) : (
             onClose && (
@@ -104,10 +105,10 @@ export const ChatInterface = ({
                 type="button"
                 className="btn-chat-action btn-close-chat"
                 onClick={onClose}
-                title="Fermer le Copilot"
-                aria-label="Fermer le Copilot"
+                title="Fermer l'assistant"
+                aria-label="Fermer l'assistant"
               >
-                ✕
+                <Icon name="close" />
               </button>
             )
           )}
@@ -117,9 +118,9 @@ export const ChatInterface = ({
       <div className="chat-messages-area">
         {messages.length === 0 && (
           <div className="chat-welcome">
-            <div className="welcome-icon">💬</div>
-            <h4>Copilot AI Assistant</h4>
-            <p>Interrogez la base vectorielle sur les ETF, stratégies d'allocation et métriques quantitatives.</p>
+            <div className="welcome-icon"><Icon name="assistant" size={28} /></div>
+            <h4>Assistant documentaire</h4>
+            <p>Posez une question sur vos ETF : les réponses s'appuient sur les fiches collectées, et les chiffres non retrouvés dans les sources sont signalés.</p>
 
             <div className="quick-prompts-section">
               <span className="prompts-label">Suggestions rapides :</span>
@@ -149,18 +150,18 @@ export const ChatInterface = ({
               <div className={`chat-bubble ${isUser ? 'bubble-user' : 'bubble-assistant'}`}>
                 <div className="bubble-author">
                   {isUser ? (
-                    <span className="user-author-tag">👤 Vous</span>
+                    <span className="user-author-tag"><Icon name="user" size={13} /> Vous</span>
                   ) : (
                     <div className="assistant-author-row">
                       <div className="assistant-badge">
                         <span className="assistant-pulse"></span>
-                        <strong>Copilot AI</strong>
+                        <strong>Assistant</strong>
                         {hasSources && (
-                          <span className="assistant-tag">RAG Augmenté</span>
+                          <span className="assistant-tag">Sourcé</span>
                         )}
                       </div>
                       {msg.latency_ms && (
-                        <span className="bubble-latency">⚡ {msg.latency_ms} ms</span>
+                        <span className="bubble-latency"><Icon name="clock" size={12} /> {Math.round(msg.latency_ms)} ms</span>
                       )}
                     </div>
                   )}
@@ -184,7 +185,9 @@ export const ChatInterface = ({
                       <span className="sources-count-label">
                         {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} documentaire{msg.sources.length > 1 ? 's' : ''}
                       </span>
-                      <span className="sources-chevron">{isSourcesOpen ? '▲ Réduire' : '▼ Dérouler'}</span>
+                      <span className="sources-chevron">
+                        <Icon name={isSourcesOpen ? 'chevronUp' : 'chevronDown'} size={14} /> {isSourcesOpen ? 'Masquer' : 'Afficher'}
+                      </span>
                     </button>
 
                     {isSourcesOpen && (
@@ -212,21 +215,21 @@ export const ChatInterface = ({
                               </div>
 
                               <div className="source-meta-row">
-                                <span className="source-meta-tag">📁 {source.category || 'Fonds'}</span>
+                                <span className="source-meta-tag">{source.category || 'Fonds'}</span>
                                 {source.provider && (
-                                  <span className="source-meta-tag">🏛️ {source.provider}</span>
+                                  <span className="source-meta-tag">Source : {source.provider}</span>
                                 )}
                                 {source.aum && (
-                                  <span className="source-meta-tag">💰 Encours : {source.aum}</span>
+                                  <span className="source-meta-tag">Encours : {source.aum}</span>
                                 )}
                                 {source.paris_aligned && (
-                                  <span className="source-meta-tag source-tag-paris">🌱 Accords de Paris (PAB)</span>
+                                  <span className="source-meta-tag source-tag-paris">Indice aligné Accords de Paris (PAB)</span>
                                 )}
                               </div>
 
                               {source.holdings && source.holdings.length > 0 && (
                                 <div className="source-holdings-block">
-                                  <span className="source-block-label">Top sous-jacents :</span>
+                                  <span className="source-block-label">Principales positions :</span>
                                   <div className="source-holdings-chips">
                                     {source.holdings.slice(0, 6).map((h, hIdx) => (
                                       <span key={hIdx} className="source-holding-chip">{h}</span>
@@ -240,7 +243,7 @@ export const ChatInterface = ({
 
                               {source.strategy && (
                                 <div className="source-strategy-block">
-                                  <span className="source-strategy-label">Mandat :</span>
+                                  <span className="source-strategy-label">Stratégie :</span>
                                   <span className="source-strategy-text">{source.strategy}</span>
                                 </div>
                               )}
@@ -253,7 +256,7 @@ export const ChatInterface = ({
                                     rel="noopener noreferrer"
                                     className="source-action-btn btn-yahoo"
                                   >
-                                    🔗 Cotation Yahoo Finance ({source.ticker}) ↗
+                                    Cotation Yahoo Finance ({source.ticker}) <Icon name="external" size={12} />
                                   </a>
                                 )}
                                 {source.pdf_url && (
@@ -263,14 +266,14 @@ export const ChatInterface = ({
                                     rel="noopener noreferrer"
                                     className="source-action-btn btn-kid"
                                   >
-                                    📄 Fiche KID & Factsheet ↗
+                                    <Icon name="document" size={12} /> Fiche du fonds <Icon name="external" size={12} />
                                   </a>
                                 )}
                               </div>
 
                               {source.snippet && !source.holdings?.length && (
                                 <details className="source-snippet-details">
-                                  <summary className="snippet-summary">🔎 Extrait textuel complémentaire</summary>
+                                  <summary className="snippet-summary">Extrait de la fiche</summary>
                                   <div className="snippet-body-text">{source.snippet}</div>
                                 </details>
                               )}
@@ -285,8 +288,7 @@ export const ChatInterface = ({
                 {!isUser && msg.suggested_questions && msg.suggested_questions.length > 0 && (
                   <div className="chat-suggested-questions">
                     <div className="suggested-questions-header">
-                      <span className="suggested-sparkle">💡</span>
-                      <span className="suggested-questions-title">Questions suggérées :</span>
+                      <span className="suggested-questions-title">Questions suggérées</span>
                     </div>
                     <div className="suggested-questions-list">
                       {msg.suggested_questions.map((qText, qIdx) => (
@@ -297,7 +299,7 @@ export const ChatInterface = ({
                           onClick={() => handlePromptClick(qText.replace(/\*\*/g, '').replace(/`/g, ''))}
                           disabled={isLoading}
                         >
-                          <span className="suggested-question-arrow">↳</span>
+                          <span className="suggested-question-arrow"><Icon name="arrowRight" size={13} /></span>
                           <span className="suggested-question-text">{renderInline(qText)}</span>
                         </button>
                       ))}
@@ -315,14 +317,14 @@ export const ChatInterface = ({
               <div className="typing-dots">
                 <span></span><span></span><span></span>
               </div>
-              <span className="loading-label">Recherche vectorielle et synthèse en cours...</span>
+              <span className="loading-label">Recherche dans les fiches et rédaction de la réponse...</span>
             </div>
           </div>
         )}
 
         {error && (
           <div className="chat-alert-error">
-            ⚠️ {error}
+            <Icon name="alert" size={14} /> {error}
           </div>
         )}
 

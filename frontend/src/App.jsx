@@ -10,6 +10,7 @@ import { ListedAllocationChart } from './components/ListedAllocationChart';
 import { GeographicAllocationChart } from './components/GeographicAllocationChart';
 import { StressTestPositionsTable } from './components/StressTestPositionsTable';
 import { getAssetCategory } from './utils/assetClassifier';
+import { Icon } from './components/Icon';
 import { getDisplayTicker, getExchangeName } from './utils/format';
 import {
   BarChart,
@@ -231,6 +232,9 @@ function App() {
 
   // Stratégies stochastiques (Buy & Hold et Versements programmés DCA)
   const [strategyType, setStrategyType] = useState('buy_and_hold');
+  // Dérive : nulle par défaut (espérance de rendement nulle, prudent pour la VaR) ou moyenne historique
+  const [driftMode, setDriftMode] = useState('zero');
+  const [simulatedDriftMode, setSimulatedDriftMode] = useState('zero');
   const [dcaAmount, setDcaAmount] = useState(200);
   const [dcaFrequency, setDcaFrequency] = useState(30);
 
@@ -578,9 +582,11 @@ function App() {
       assets: simAssets,
       time_horizon_days: timeHorizon,
       num_paths: 10000,
-      strategy: strategyPayload
+      strategy: strategyPayload,
+      drift: driftMode
     });
-  }, [portfolio, strategyType, dcaAmount, dcaFrequency, timeHorizon, startSimulation]);
+    setSimulatedDriftMode(driftMode);
+  }, [portfolio, strategyType, dcaAmount, dcaFrequency, timeHorizon, driftMode, startSimulation]);
 
 
 
@@ -662,8 +668,8 @@ function App() {
       <div className="main-column">
         <header className="app-header">
           <div>
-            <h1 className="main-title">Copilot AI - Analyse Quantitative & Portefeuille</h1>
-            <p className="main-subtitle">Plateforme institutionnelle d'allocation d'actifs, métriques de risque et RAG génératif</p>
+            <h1 className="main-title">Copilot AI</h1>
+            <p className="main-subtitle">Suivi de portefeuille, analyse de risque et assistant documentaire sur ETF</p>
           </div>
 
           {/* Sélecteur d'onglets */}
@@ -673,13 +679,13 @@ function App() {
                 className={`tab-btn ${activeTab === 'portfolio' ? 'active' : ''}`}
                 onClick={() => setActiveTab('portfolio')}
               >
-                📊 Portefeuille & Allocation
+                <Icon name="portfolio" /> Portefeuille
               </button>
               <button
                 className={`tab-btn ${activeTab === 'simulation' ? 'active' : ''}`}
                 onClick={() => setActiveTab('simulation')}
               >
-                🎲 Stress Test & Monte Carlo
+                <Icon name="risk" /> Risque et simulation
               </button>
             </div>
 
@@ -687,11 +693,10 @@ function App() {
               type="button"
               className={`btn-header-copilot-trigger ${isCopilotOpen ? 'active' : ''}`}
               onClick={() => setIsCopilotOpen(!isCopilotOpen)}
-              title="Ouvrir le Copilot IA"
+              title="Ouvrir l'assistant documentaire"
             >
-              <span className="copilot-sparkle-icon">✨</span>
-              <span>Copilot IA</span>
-              <span className="copilot-header-badge">RAG</span>
+              <Icon name="assistant" />
+              <span>Assistant</span>
             </button>
           </nav>
         </header>
@@ -701,11 +706,11 @@ function App() {
           <div className="search-container">
             <div className="search-header-row">
               <label className="form-label">
-                Ajouter un actif au portefeuille (Actions, ETF mondiaux, CAC 40, S&P 500) :
+                Ajouter un actif (ETF, actions du S&P 500 et du CAC 40) :
               </label>
               <div className="pipeline-sync-badge">
                 <span className="pipeline-pulse-dot"></span>
-                <span className="sync-text">{availableAssets.length} Actifs réels · Airflow DAG actif</span>
+                <span className="sync-text">{availableAssets.length} actifs disponibles</span>
                 <button
                   type="button"
                   className={`btn-sync-refresh ${isScrapingInProgress ? 'loading' : ''}`}
@@ -713,7 +718,7 @@ function App() {
                   disabled={isScrapingInProgress}
                   title="Déclencher le scraping nocturne EOD et le recalcul quantitatif de covariance"
                 >
-                  {isScrapingInProgress ? '⟳ Scraping en cours...' : '⟳ Actualiser les cours'}
+                  <Icon name="refresh" size={14} /> {isScrapingInProgress ? 'Mise à jour en cours...' : 'Actualiser les cours'}
                 </button>
                 {scrapingFeedback && <span className="sync-feedback text-success">{scrapingFeedback}</span>}
               </div>
@@ -852,7 +857,7 @@ function App() {
                 totalCostBasis={totalCostBasis}
               />
 
-              {/* Tableau des Positions (Google Finance Style) */}
+              {/* Tableau des positions */}
               <div className="positions-card">
                 <div className="chart-header-row">
                   <div>
@@ -915,7 +920,7 @@ function App() {
                                 </div>
                               </td>
 
-                               {/* 2. Quantité (Design Image 1 : 45 ✎ cliquable pour ouvrir la modale) */}
+                               {/* 2. Quantité (cliquable : ouvre la gestion des opérations) */}
                               <td className="center">
                                 <button
                                   type="button"
@@ -989,13 +994,13 @@ function App() {
                                   type="button"
                                   onClick={() => setSelectedLookThroughTicker(asset.ticker)}
                                   className="btn-table-lookthrough"
-                                  title={`Décomposition par transparence de ${asset.ticker}`}
+                                  title={`Composition de ${asset.ticker}`}
                                 >
-                                  🔍 Look-Through
+                                  <Icon name="search" size={14} /> Composition
                                 </button>
                               </td>
 
-                              {/* 9. Menu déroulant 3-points Google Finance (Enregistrer un achat / Supprimer) */}
+                              {/* 9. Menu d'actions (enregistrer une opération / supprimer la ligne) */}
                               <td className="center">
                                 <div className="table-kebab-wrapper">
                                   <button
@@ -1118,7 +1123,7 @@ function App() {
                   />
                 </div>
 
-                {/* Camembert 2 : Typologie des Actifs (Google Finance : FNB, Actions, Non Boursier) */}
+                {/* Camembert 2 : typologie des actifs (ETF, actions, non coté) */}
                 <div className="chart-card allocation-card">
                   <ListedAllocationChart
                     fnbAmount={fnbVal}
@@ -1138,7 +1143,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Historique Valorisation vs Benchmark Style Google Finance */}
+              {/* Historique de valorisation et comparaison au benchmark */}
               <div className="history-chart-fullwidth">
                 <PortfolioHistoryChart
                   timeSeries={performanceData?.time_series || []}
@@ -1189,14 +1194,26 @@ function App() {
                 </div>
 
                 <div className="control-group">
-                  <label className="params-label">Stratégie Quantitative :</label>
+                  <label className="params-label">Stratégie :</label>
                   <select
                     value={strategyType}
                     onChange={(e) => setStrategyType(e.target.value)}
                     className="form-select"
                   >
-                    <option value="buy_and_hold">Buy & Hold (Conservation passive)</option>
-                    <option value="dca">Versements programmés (DCA Régulier)</option>
+                    <option value="buy_and_hold">Achat-conservation</option>
+                    <option value="dca">Versements programmés (DCA)</option>
+                  </select>
+                </div>
+
+                <div className="control-group">
+                  <label className="params-label" title="Tendance moyenne supposée des rendements simulés">Hypothèse de dérive :</label>
+                  <select
+                    value={driftMode}
+                    onChange={(e) => setDriftMode(e.target.value)}
+                    className="form-select"
+                  >
+                    <option value="zero">Nulle (prudente, recommandée pour la VaR)</option>
+                    <option value="historical">Historique (moyenne des 3 dernières années)</option>
                   </select>
                 </div>
               </div>
@@ -1219,7 +1236,7 @@ function App() {
                 disabled={status === 'loading'}
                 className="btn-simulate"
               >
-                {status === 'loading' ? 'Exécution des 10 000 trajectoires en cours...' : 'Lancer le Stress Test Monte Carlo (10 000 trajectoires)'}
+                {status === 'loading' ? 'Simulation en cours (10 000 trajectoires)...' : 'Lancer la simulation Monte Carlo (10 000 trajectoires)'}
               </button>
               {status === 'error' && (
                 <p className="section-subtitle text-danger">Simulation interrompue : {simulationError || 'erreur inconnue'}</p>
@@ -1231,14 +1248,14 @@ function App() {
               <div className="results-container">
                 <div className="metrics-row">
                   <div className="metric-card border-var">
-                    <h3 className="metric-title">Value at Risk 95% (Perte potentielle)</h3>
+                    <h3 className="metric-title">Value at Risk 95 %</h3>
                     <p className="metric-value text-danger">{var95?.toFixed(2)} €</p>
-                    <span className="metric-desc">Dans 95% des scénarios, la perte à l'horizon simulé ne dépasse pas ce montant.</span>
+                    <span className="metric-desc">Dans 95 % des scénarios, la perte à l'horizon simulé ne dépasse pas ce montant. Dérive {simulatedDriftMode === 'zero' ? 'nulle' : 'historique'}.</span>
                   </div>
                   <div className="metric-card border-cvar">
-                    <h3 className="metric-title">Expected Shortfall 95% (CVaR)</h3>
+                    <h3 className="metric-title">Expected Shortfall 95 %</h3>
                     <p className="metric-value text-dark-danger">{cvar95?.toFixed(2)} €</p>
-                    <span className="metric-desc">Perte moyenne dans les 5% de pires scénarios.</span>
+                    <span className="metric-desc">Perte moyenne dans les 5 % de pires scénarios.</span>
                   </div>
                 </div>
 
@@ -1339,7 +1356,7 @@ function App() {
         />
       )}
 
-      {/* Fenêtre Modale de Gestion des Opérations d'Achat/Vente (Style Google Finance) */}
+      {/* Fenêtre de gestion des opérations d'achat et de vente */}
       {selectedAssetForTransactions && (() => {
         const assetObj = portfolio.find(a => a.ticker === selectedAssetForTransactions);
         const assetDetails = availableAssets.find(a => a.ticker === selectedAssetForTransactions);

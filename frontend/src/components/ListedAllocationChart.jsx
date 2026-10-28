@@ -35,7 +35,7 @@ export const ListedAllocationChart = ({
       shortName: 'FNB (ETF)',
       value: fnbAmount,
       weightPct: fnbPct,
-      color: '#2563eb' // Bleu institutionnel Google
+      color: '#2563eb'
     },
     {
       name: 'Actions (Titres vifs)',
@@ -63,7 +63,7 @@ export const ListedAllocationChart = ({
       <div className="chart-header-row">
         <div>
           <h4 className="chart-title">Typologie des Actifs</h4>
-          <span className="chart-micro-subtitle">Classification Google : FNB, Actions & Non Boursier</span>
+          <span className="chart-micro-subtitle">ETF, actions et actifs non cotés</span>
         </div>
         <div className="allocation-tags-pill">
           {fnbAmount > 0 && (

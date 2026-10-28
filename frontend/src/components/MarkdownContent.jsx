@@ -1,4 +1,5 @@
 import { renderInline } from '../utils/renderInline';
+import { Icon } from './Icon';
 
 function isTableRow(line) {
   const trimmed = line.trim();
@@ -164,7 +165,7 @@ export const MarkdownContent = ({ content }) => {
     if (isDisclaimer) {
       elements.push(
         <div key={`disclaimer-${i}`} className="md-disclaimer-box">
-          <span className="disclaimer-icon">⚖️</span>
+          <span className="disclaimer-icon"><Icon name="info" size={14} /></span>
           <div className="disclaimer-text">{renderInline(trimmed)}</div>
         </div>
       );

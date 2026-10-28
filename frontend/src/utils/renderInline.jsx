@@ -1,3 +1,5 @@
+import { Icon } from '../components/Icon';
+
 // Fonction de rendu des éléments inline (gras, code, liens, italique)
 export function renderInline(text) {
   if (!text) return null;
@@ -27,7 +29,7 @@ export function renderInline(text) {
           rel="noopener noreferrer"
           className="md-link"
         >
-          {linkMatch[1]} <span className="md-ext-icon">↗</span>
+          {linkMatch[1]} <span className="md-ext-icon"><Icon name="external" size={11} /></span>
         </a>
       );
     }
