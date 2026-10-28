@@ -38,9 +38,9 @@ export const FloatingCopilot = ({
     );
   }
 
-  // 3. Mode Widget Flottant en bas à droite (440px × 620px)
+  // Panneau latéral ancré à droite, sur toute la hauteur
   return (
-    <aside className="copilot-widget-container" aria-label="Copilot AI Fenêtre Flottante">
+    <aside className="copilot-widget-container" aria-label="Assistant documentaire">
       <div className="copilot-widget-card">
         <ChatInterface
           mode="widget"
