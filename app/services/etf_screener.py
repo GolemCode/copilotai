@@ -34,11 +34,12 @@ POPULAR_ETF_CATALOG: List[Dict[str, Any]] = [
 ]
 
 # ETF dont la fiche est collectée et vectorisée par défaut (+ tous ceux du catalogue de référence).
-# PABZ.PA, XDPE.PA et BGRN remplacent les anciennes fiches climat rédigées à la main.
+# PABZ.PA et BGRN remplacent les anciennes fiches climat rédigées à la main
+# (XDPE.PA, qui y figurait, n'existe pas sur Yahoo Finance).
 RAG_REFERENCE_TICKERS = sorted(set([
     "CW8.PA", "WPEA.PA", "PE500.PA", "PUST.PA", "CAC.PA", "ETZ.PA", "PAEEM.PA",
     "SPY", "QQQ", "GLD", "TLT", "AGG", "XLK", "XLF", "XEON.DE",
-    "PABZ.PA", "XDPE.PA", "BGRN",
+    "PABZ.PA", "BGRN",
 ] + [c["ticker"] for c in POPULAR_ETF_CATALOG]))
 
 MIN_AUM_EUR = 1_000_000_000.0  # seuil d'encours : 1 Md€

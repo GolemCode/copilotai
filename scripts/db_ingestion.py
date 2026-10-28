@@ -154,7 +154,7 @@ async def seed_database():
         priority_tickers = [
             "CW8.PA", "WPEA.PA", "SPY", "QQQ", "GLD", "AGG", "PE500.PA", "ESE.PA", "PUST.PA", "CAC.PA",
             "XEON.DE", "ETZ.PA", "PAEEM.PA", "TLT", "XLK", "XLF", "XLV", "XLE", "SMH", "ICLN", "MSE.PA", "AIR.PA",
-            "MC.PA", "OR.PA", "SAN.PA", "TTE.PA", "BNP.PA", "SU.PA", "PABZ.PA", "XDPE.PA",
+            "MC.PA", "OR.PA", "SAN.PA", "TTE.PA", "BNP.PA", "SU.PA", "PABZ.PA",
             # Taux de change nécessaires à la conversion en EUR des actifs cotés en USD
             "EURUSD=X",
         ]

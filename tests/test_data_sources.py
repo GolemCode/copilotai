@@ -62,6 +62,19 @@ def test_etf_without_published_data_stays_empty(monkeypatch):
     assert snap["profile"]["total_assets"] is None
 
 
+def test_ticker_unknown_to_yahoo_is_not_saved(monkeypatch):
+    monkeypatch.setitem(__import__("sys").modules, "yfinance", _fake_yf({}))
+    with pytest.raises(ValueError, match="inconnu"):
+        scrape_fund_snapshot("XDPE.PA")
+
+
+def test_explicit_tickers_are_detected_in_questions():
+    rag_ingestion = pytest.importorskip("app.services.rag_ingestion")
+    found = rag_ingestion.find_explicit_tickers("Quelles positions de CW8.PA face à spy et pe500.pa ?")
+    assert "CW8.PA" in found and "PE500.PA" in found
+    assert "SPY" not in found  # en minuscules sans place de cotation : ambigu avec un mot courant
+
+
 def test_european_etf_uses_justetf_when_yahoo_has_no_holdings(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "yfinance", _fake_yf({"quoteType": "ETF", "totalAssets": 5e9, "currency": "EUR"}))
     monkeypatch.setattr(fund_data, "_scrape_justetf", lambda isin: parse_justetf_profile(JUSTETF_HTML))

@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
@@ -253,10 +254,92 @@ def index_fund_documents(snapshots: List[Dict[str, Any]]) -> int:
         return 0
     docs = [build_fund_document(s) for s in snapshots]
     split_docs = get_text_splitter().split_documents(docs)
+    # Rang du segment dans sa fiche : permet de reconstituer la fiche dans l'ordre (recherche par ticker)
+    counters: Dict[str, int] = {}
+    for doc in split_docs:
+        ticker = doc.metadata["ticker"]
+        doc.metadata["chunk_index"] = counters.get(ticker, 0)
+        counters[ticker] = doc.metadata["chunk_index"] + 1
     delete_documents_by_tickers([s["ticker"] for s in snapshots])
     get_vectorstore().add_documents(split_docs)
     logger.info(f"{len(split_docs)} segments indexés pour {len(snapshots)} fiches.")
     return len(split_docs)
+
+
+def purge_fund_documents_except(tickers: List[str]) -> int:
+    """Supprime les fiches scrapées des tickers absents de la dernière collecte (actif retiré ou inconnu)."""
+    import psycopg
+    keep = [t.strip().upper() for t in tickers]
+    try:
+        with psycopg.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}") as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM langchain_pg_embedding
+                    WHERE cmetadata->>'source_type' = %s AND NOT (UPPER(cmetadata->>'ticker') = ANY(%s));
+                """, (FUND_DOCUMENT_SOURCE_TYPE, keep))
+                deleted = cur.rowcount
+            conn.commit()
+        return deleted
+    except Exception as e:
+        logger.warning(f"Purge des fiches orphelines impossible : {e}")
+        return 0
+
+
+def find_explicit_tickers(text: str) -> List[str]:
+    """Symboles cités tels quels dans une question (ex. CW8.PA, SPY, cw8.pa)."""
+    candidates = set(re.findall(r"\b[A-Z][A-Z0-9]{1,5}(?:\.[A-Z]{1,2})?\b", text))
+    candidates |= {m.upper() for m in re.findall(r"\b[a-zA-Z0-9]{2,6}\.[a-zA-Z]{1,2}\b", text)}
+    return sorted(candidates)
+
+
+def get_documents_for_tickers(tickers: List[str]) -> List[Dict[str, Any]]:
+    """
+    Recherche EXACTE, complément de la recherche sémantique : la fiche d'un actif cité explicitement
+    dans la question est toujours fournie au LLM, même si sa similarité cosinus est faible
+    (le modèle d'embedding, entraîné en anglais, classe mal des fiches très proches entre elles).
+    """
+    if not tickers:
+        return []
+    import psycopg
+    keys = sorted({t.strip().upper() for t in tickers})
+    bases = sorted({k.split(".")[0] for k in keys})
+    try:
+        with psycopg.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}") as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT document, cmetadata FROM langchain_pg_embedding
+                    WHERE cmetadata->>'source_type' = %s
+                      AND (UPPER(cmetadata->>'ticker') = ANY(%s) OR SPLIT_PART(UPPER(cmetadata->>'ticker'), '.', 1) = ANY(%s))
+                    ORDER BY cmetadata->>'ticker', COALESCE((cmetadata->>'chunk_index')::int, 0);
+                """, (FUND_DOCUMENT_SOURCE_TYPE, keys, bases))
+                rows = cur.fetchall()
+    except Exception as e:
+        logger.warning(f"Recherche exacte par ticker impossible : {e}")
+        return []
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for content, meta in rows:
+        ticker = (meta or {}).get("ticker", "N/A").upper()
+        entry = grouped.setdefault(ticker, {"meta": meta or {}, "chunks": []})
+        entry["chunks"].append(content)
+
+    results = []
+    for ticker, entry in grouped.items():
+        meta = entry["meta"]
+        results.append({
+            "ticker": ticker,
+            "name": meta.get("name", ticker),
+            "category": ETF_CATEGORY_OVERRIDES.get(ticker) or meta.get("category", "Fonds"),
+            # segments qui se chevauchent : la fiche reconstituée peut répéter quelques lignes
+            "content": "\n".join(entry["chunks"]),
+            "similarity_score_pct": None,
+            "match_type": "direct",
+            "source_url": meta.get("source_url") or f"https://finance.yahoo.com/quote/{ticker}",
+            "pdf_url": meta.get("pdf_url"),
+            "provider": meta.get("provider", "Yahoo Finance & JustETF"),
+            "metadata": meta,
+        })
+    return results
 
 
 ETF_CATEGORY_OVERRIDES = {
@@ -269,7 +352,6 @@ ETF_CATEGORY_OVERRIDES = {
     "XEON.DE": "Monétaire (€STR / Trésorerie sans risque)",
     "ETZ.PA": "Actions Europe (Stoxx Europe 600)",
     "PAEEM.PA": "Actions Marchés Émergents",
-    "XDPE.PA": "Actions US / ESG (Article 8 SFDR)",
     "TLT": "Obligations Souveraines US (20 ans+)",
     "AGG": "Obligations US Investment Grade",
     "GLD": "Matières Premières / Or Physique"

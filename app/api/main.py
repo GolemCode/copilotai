@@ -40,6 +40,7 @@ from app.services.rag_ingestion import (
     search_similar_documents,
     ingest_custom_documents,
     index_fund_documents,
+    purge_fund_documents_except,
     purge_legacy_documents
 )
 from app.services.fund_data import load_fund_snapshot, refresh_fund_data
@@ -791,6 +792,13 @@ async def run_rag_ingestion_pipeline_endpoint(
 
         legacy_deleted = await asyncio.to_thread(purge_legacy_documents) if full_run else 0
         chunks_count = await asyncio.to_thread(index_fund_documents, snapshots)
+        if full_run:
+            # Fiches d'actifs retirés du référentiel ou inconnus de Yahoo : hors de l'index
+            legacy_deleted += await asyncio.to_thread(purge_fund_documents_except, fund_summary["refreshed"])
+            await conn.execute("""
+                DELETE FROM fund_profiles p USING assets a
+                WHERE p.asset_id = a.id AND a.ticker = ANY($1::varchar[]);
+            """, fund_summary["failed"])
 
         redis_client = aioredis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0, decode_responses=True)
         rag_summary = {

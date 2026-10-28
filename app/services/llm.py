@@ -5,7 +5,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from groq import AsyncGroq
 
-from app.services.rag_ingestion import search_similar_documents
+from app.services.rag_ingestion import find_explicit_tickers, get_documents_for_tickers, search_similar_documents
 from app.services.rag_validation import find_unverified_numbers
 
 logger = logging.getLogger(__name__)
@@ -340,10 +340,15 @@ async def ask_financial_assistant(
     
     # 1. Recherche vectorielle dans PGVector avec score cosinus et déduplication par ticker
     try:
-        retrieved_docs = search_similar_documents(user_query, k=30, max_results=10)
+        semantic_docs = search_similar_documents(user_query, k=30, max_results=10)
     except Exception as e:
         logger.error(f"Erreur de recherche vectorielle : {e}")
-        retrieved_docs = []
+        semantic_docs = []
+
+    # Recherche hybride : fiches des tickers cités explicitement d'abord, puis résultats sémantiques
+    direct_docs = get_documents_for_tickers(find_explicit_tickers(user_query))
+    direct_tickers = {d["ticker"] for d in direct_docs}
+    retrieved_docs = (direct_docs + [d for d in semantic_docs if d.get("ticker") not in direct_tickers])[:10]
 
     # Formatage des sources pour le client frontend
     sources_summary: List[Dict[str, Any]] = []
@@ -357,8 +362,8 @@ async def ask_financial_assistant(
             "ticker": doc.get("ticker", "N/A"),
             "name": doc.get("name", f"Document {i}"),
             "category": doc.get("category", "Général"),
-            "similarity_score_pct": doc.get("similarity_score_pct", 0.0),
-            "match_type": "semantic",
+            "similarity_score_pct": doc.get("similarity_score_pct"),
+            "match_type": doc.get("match_type", "semantic"),
             "snippet": snippet,
             "strategy": parsed_info.get("strategy") or snippet,
             "aum": parsed_info.get("aum"),
@@ -465,7 +470,7 @@ Contexte documentaire :
     if not client:
         return {
             "answer": "Service LLM non configuré (clé GROQ_API_KEY manquante). Voici néanmoins les documents trouvés dans la base vectorielle :\n\n" + 
-                     "\n".join([f"- **[{s['name']}]({s['source_url']})** (`{s['ticker']}`) : similarité {s['similarity_score_pct']}% — [Fiche KID ↗]({s['pdf_url']})" for s in sources_summary]),
+                     "\n".join([f"- **[{s['name']}]({s['source_url']})** (`{s['ticker']}`) : {'source directe' if s['similarity_score_pct'] is None else 'similarité ' + str(s['similarity_score_pct']) + ' %'} — [Fiche KID ↗]({s['pdf_url']})" for s in sources_summary]),
             "sources": sources_summary,
             "suggested_questions": [],
             "latency_ms": round((time.time() - start_time) * 1000, 2)
@@ -541,7 +546,7 @@ Contexte documentaire :
                 # Tickers entre parenthèses ou mots-clés boursiers
                 for match in re.finditer(r"\b([A-Z][A-Z0-9]{1,5}(?:\.[A-Z]{2})?)\b", clean_answer):
                     cand = match.group(1).upper()
-                    if cand in ["SPY", "QQQ", "AGG", "EMB", "GLD", "TLT", "CW8", "WPEA", "PE500", "PUST", "XEON", "ETZ", "CAC", "PAEEM", "IWM", "XLK", "XLF", "XLV", "XLE", "SMH", "SLV", "VTI", "VEA", "VWO", "PABZ", "XDPE"]:
+                    if cand in ["SPY", "QQQ", "AGG", "EMB", "GLD", "TLT", "CW8", "WPEA", "PE500", "PUST", "XEON", "ETZ", "CAC", "PAEEM", "IWM", "XLK", "XLF", "XLV", "XLE", "SMH", "SLV", "VTI", "VEA", "VWO", "PABZ"]:
                         candidate_tickers.add(cand)
 
                 # Positions réelles du portefeuille
@@ -599,7 +604,7 @@ Contexte documentaire :
         f"Toutefois, voici les {len(sources_summary)} documents identifiés dans la base vectorielle avec leurs liens de vérification directe :\n\n"
     )
     for s in sources_summary:
-        fallback_answer += f"- **[{s['name']}]({s['source_url']})** (`{s['ticker']}`) : Pertinence {s['similarity_score_pct']}% — [Fiche KID / Factsheet ↗]({s['pdf_url']})\n"
+        fallback_answer += f"- **[{s['name']}]({s['source_url']})** (`{s['ticker']}`) : {'source directe' if s['similarity_score_pct'] is None else 'pertinence ' + str(s['similarity_score_pct']) + ' %'} — [Fiche KID / Factsheet ↗]({s['pdf_url']})\n"
         
     return {
         "answer": fallback_answer,

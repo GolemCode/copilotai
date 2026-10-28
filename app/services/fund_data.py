@@ -137,6 +137,8 @@ def scrape_fund_snapshot(ticker: str) -> Dict[str, Any]:
     yt = yf.Ticker(ticker)
     info = yt.info or {}
     quote_type = (info.get("quoteType") or "").upper()
+    if not quote_type and not (info.get("longName") or info.get("shortName")):
+        raise ValueError(f"{ticker} est inconnu de Yahoo Finance : aucune fiche enregistrée.")
     sources = ["yahoo"]
 
     snapshot: Dict[str, Any] = {
