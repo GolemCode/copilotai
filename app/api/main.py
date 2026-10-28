@@ -24,7 +24,6 @@ from app.api.schemas import (
     RagSearchRequest,
     DocumentIngestRequest,
     PortfolioMetricsRequest,
-    PortfolioOptimizeRequest,
     AssetGeoExposureResponse,
     PortfolioGeoExposureRequest,
     PortfolioGeoExposureResponse,
@@ -48,7 +47,6 @@ from app.services.fund_data import load_fund_snapshot, refresh_fund_data
 from app.services.etf_screener import RAG_REFERENCE_TICKERS, get_popular_etfs
 from app.quant.estimation import weekly_covariance
 from app.quant.metrics import compute_portfolio_metrics
-from app.quant.optimization import optimize_portfolio
 from app.quant.performance import compute_holdings_history, compute_realized_performance
 from app.quant.stress import compute_historical_stress
 from app.services.portfolio import (
@@ -444,63 +442,6 @@ async def calculate_portfolio_metrics_endpoint(
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Erreur de calcul des métriques : {str(e)}")
-
-@app.post("/api/v1/portfolio/optimize")
-async def optimize_portfolio_endpoint(
-    request: PortfolioOptimizeRequest,
-    conn=Depends(get_db_connection)
-):
-    """
-    Frontière efficiente de Markowitz (long-only) : portefeuilles de Sharpe maximal et de variance
-    minimale, obtenus par optimisation sous contraintes sur 3 ans d'historique en EUR.
-    """
-    try:
-        pivoted_df, _, _ = await load_base_currency_panel(conn, request.tickers, years=3)
-        if pivoted_df.is_empty():
-            raise HTTPException(status_code=404, detail="Données insuffisantes pour l'optimisation.")
-
-        # Les poids optimaux doivent correspondre exactement aux colonnes de la matrice de covariance
-        tickers = [t for t in request.tickers if t in pivoted_df.columns]
-        missing = [t for t in request.tickers if t not in tickers]
-        if missing:
-            raise HTTPException(status_code=400, detail=f"Historique manquant pour : {', '.join(missing)}")
-
-        returns_expressions = [
-            ((pl.col(t) - pl.col(t).shift(1)) / pl.col(t).shift(1)).alias(t)
-            for t in tickers
-        ]
-        returns_df = pivoted_df.select(returns_expressions).drop_nulls()
-        returns_matrix = returns_df.to_numpy()
-
-        # Markowitz raisonne sur l'espérance des rendements SIMPLES (arithmétique), annualisée
-        trading_days = 252
-        expected_returns = np.mean(returns_matrix, axis=0) * trading_days
-        # Covariance estimée sur blocs de 5 séances (clôtures non synchrones), annualisée
-        covariance_matrix = weekly_covariance(returns_matrix) * trading_days
-
-        rf = await _resolve_risk_free_rate(conn, request.risk_free_rate)
-        current = None
-        if request.current_weights:
-            current = np.array([float(request.current_weights.get(t, 0.0)) for t in tickers])
-            current = current if current.sum() > 0 else None
-
-        opt_result = optimize_portfolio(
-            expected_returns=expected_returns,
-            covariance_matrix=covariance_matrix,
-            tickers=tickers,
-            risk_free_rate=rf["rate"],
-            current_weights=current,
-        )
-        opt_result["risk_free_source"] = rf["source"]
-        opt_result["history_start"] = str(pivoted_df["market_date"][0])
-        opt_result["history_end"] = str(pivoted_df["market_date"][-1])
-        return opt_result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Erreur d'optimisation : {str(e)}")
 
 async def _resolve_risk_free_rate(conn, explicit: Optional[float]) -> Dict[str, Any]:
     """Taux fourni explicitement par l'appelant, sinon €STR sur 12 mois (XEON.DE en base)."""

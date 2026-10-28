@@ -9,7 +9,6 @@ import { TransactionModal } from './components/TransactionModal';
 import { ListedAllocationChart } from './components/ListedAllocationChart';
 import { GeographicAllocationChart } from './components/GeographicAllocationChart';
 import { StressTestPositionsTable } from './components/StressTestPositionsTable';
-import { OptimizationPanel } from './components/OptimizationPanel';
 import { getAssetCategory } from './utils/assetClassifier';
 import { getDisplayTicker, getExchangeName } from './utils/format';
 import {
@@ -1226,10 +1225,6 @@ function App() {
                 <p className="section-subtitle text-danger">Simulation interrompue : {simulationError || 'erreur inconnue'}</p>
               )}
             </div>
-
-            <OptimizationPanel
-              assetBreakdown={metricsData?.asset_breakdown || []}
-            />
 
             {/* Résultats de simulation */}
             {status === 'success' && histogramData && (

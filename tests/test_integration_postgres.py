@@ -199,8 +199,6 @@ def test_read_endpoints(pg_uri):
             "popular": await m.get_popular_etfs_endpoint(quick_only=True, conn=conn),
             "metrics": await m.calculate_portfolio_metrics_endpoint(sc.PortfolioMetricsRequest(
                 assets=[{"ticker": "SPY", "shares": 10}, {"ticker": "CW8.PA", "shares": 10}], years=3), conn=conn),
-            "optimize": await m.optimize_portfolio_endpoint(sc.PortfolioOptimizeRequest(
-                tickers=["SPY", "CW8.PA", "QQQ"], current_weights={"SPY": 50, "CW8.PA": 30, "QQQ": 20}), conn=conn),
             "stress": await m.stress_scenarios_endpoint(sc.StressScenarioRequest(
                 assets=[{"ticker": "SPY", "shares": 10}, {"ticker": "QQQ", "shares": 5}, {"ticker": "SCPI-EUR", "shares": 1}]),
                 conn=conn),
@@ -215,7 +213,6 @@ def test_read_endpoints(pg_uri):
     spy = next(p for p in r["popular"] if p["ticker"] == "SPY")
     assert spy["aum_eur"] == pytest.approx(5.5e11 / RAW["EURUSD=X"][-1], rel=1e-6)
     assert r["metrics"]["summary"]["risk_free_source"].startswith("€STR")
-    assert r["optimize"]["current"]["weights"]["SPY"] == pytest.approx(50.0)
     assert [s["id"] for s in r["stress"]["scenarios"]] == ["worst_period", "worst_month", "worst_market_month"]
     assert r["stress"]["excluded_non_listed"] == ["SCPI-EUR"]
 

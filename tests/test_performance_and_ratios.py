@@ -6,7 +6,6 @@ import pytest
 
 from app.quant.estimation import dimson_beta, weekly_covariance
 from app.quant.monte_carlo import generate_monte_carlo_simulation
-from app.quant.optimization import min_variance_weights, optimize_portfolio
 from app.quant.performance import compute_realized_performance, xirr
 from app.quant.ratios import daily_risk_free, downside_deviation, sharpe_ratio, sortino_ratio
 from app.services.market_data import trailing_annual_return
@@ -153,28 +152,6 @@ def test_unknown_strategy_is_rejected():
             np.array([0.0]), np.array([[0.0001]]), np.array([1.0]), 100, 20, 1000.0,
             strategy={"type": "momentum"}, seed=1,
         )
-
-
-# ---------------------------------------------------------------------------
-# Markowitz : optimisation réelle
-# ---------------------------------------------------------------------------
-
-def test_min_variance_matches_two_asset_closed_form():
-    cov = np.array([[0.04, 0.006], [0.006, 0.09]])
-    w1 = (0.09 - 0.006) / (0.04 + 0.09 - 2 * 0.006)
-    assert min_variance_weights(cov)[0] == pytest.approx(w1, abs=1e-5)
-
-
-def test_max_sharpe_beats_random_portfolios():
-    mu = np.array([0.15, 0.12, 0.10, 0.08, 0.05])
-    a = np.random.default_rng(0).normal(size=(5, 5))
-    cov = a @ a.T / 50 + np.eye(5) * 0.01
-    result = optimize_portfolio(mu, cov, list("ABCDE"), risk_free_rate=0.02, current_weights=np.ones(5))
-    w = np.random.default_rng(1).dirichlet(np.ones(5), 20_000)
-    random_sharpes = (w @ mu - 0.02) / np.sqrt(np.einsum("ij,jk,ik->i", w, cov, w))
-    assert result["max_sharpe"]["sharpe_ratio"] >= round(float(random_sharpes.max()), 2)
-    assert sum(result["max_sharpe"]["weights"].values()) == pytest.approx(100.0, abs=0.05)
-    assert result["current"]["weights"]["A"] == pytest.approx(20.0)
 
 
 def test_holdings_history_values_current_quantities_on_past_prices():

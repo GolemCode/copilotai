@@ -64,13 +64,6 @@ class PortfolioMetricsRequest(BaseModel):
     benchmark_ticker: Optional[str] = "SPY"
     years: Optional[int] = Field(default=3, ge=1, le=10)
 
-class PortfolioOptimizeRequest(BaseModel):
-    tickers: List[str] = Field(..., min_length=2)
-    # None : taux sans risque déduit de l'€STR (XEON.DE, 12 mois glissants)
-    risk_free_rate: Optional[float] = Field(default=None, ge=-0.05, le=0.20)
-    # Poids actuels (en % ou en fraction) pour situer le portefeuille sur la frontière
-    current_weights: Optional[Dict[str, float]] = None
-
 class CountryExposureItem(BaseModel):
     name: str
     weight_pct: float

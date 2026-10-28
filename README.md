@@ -2,7 +2,7 @@
 
 Application web de suivi et d'analyse de portefeuille boursier (investisseur en euros) :
 données de marché scrapées et historisées, performance réelle, métriques de risque,
-simulation Monte Carlo, stress tests historiques, optimisation de Markowitz,
+simulation Monte Carlo, stress tests historiques,
 et un assistant RAG qui répond à partir des fiches d'ETF collectées, en signalant tout chiffre
 qu'il n'a pas trouvé dans ses sources.
 
@@ -17,7 +17,6 @@ qu'il n'a pas trouvé dans ses sources.
 | Risque ex-ante | Volatilité, Sharpe, Sortino, drawdown de la composition actuelle sur 1 à 10 ans d'historique |
 | Monte Carlo | Mouvement brownien géométrique multi-actifs corrélé (Cholesky), 10 000 trajectoires, VaR et Expected Shortfall 95 % exprimées en perte, graine optionnelle, stratégie DCA en euros |
 | Stress tests | Pires épisodes réellement observés (pire baisse, pire mois du portefeuille, pire mois du marché) rejoués sur les positions actuelles, bêtas historiques |
-| Optimisation | Frontière efficiente long-only, portefeuilles de Sharpe maximal et de variance minimale (SLSQP) |
 | Look-through et géographie | Principales positions, répartition par pays et par secteur des ETF (Yahoo Finance, JustETF) |
 | Assistant RAG | Recherche sémantique (pgvector, similarité cosinus) sur les fiches d'ETF, réponse LLM (Groq), vérification automatique des chiffres cités |
 
@@ -41,7 +40,7 @@ qu'il n'a pas trouvé dans ses sources.
 
 | Couche | Technologies |
 |---|---|
-| Backend | Python 3.12, FastAPI, asyncpg, Celery, Redis, NumPy, Polars, SciPy |
+| Backend | Python 3.12, FastAPI, asyncpg, Celery, Redis, NumPy, Polars |
 | Données | yfinance, JustETF (BeautifulSoup), PostgreSQL, pgvector |
 | RAG | sentence-transformers (all-MiniLM-L6-v2), LangChain, Groq |
 | Front | React 19, Vite, Recharts |
@@ -81,8 +80,7 @@ Règles de collecte ([app/services/market_data.py](app/services/market_data.py))
 | Risque ex-ante | Poids actuels appliqués à chaque séance historique |
 | Monte Carlo | Dérive = moyenne des log-rendements (correction d'Itô déjà incluse), covariance estimée sur blocs de 5 séances, chocs corrélés par Cholesky, VaR/ES 95 % = −quantile 5 % du PnL |
 | Stress tests | Rendement réalisé de chaque actif sur la fenêtre historique, appliqué à la valeur actuelle de la ligne ; bêtas de Dimson (décalage d'une séance) |
-| Clôtures non synchrones | Paris clôture avant New York : corrélations et bêtas quotidiens sont biaisés vers zéro. Covariances (Monte Carlo, Markowitz) estimées sur blocs de 5 séances, bêtas de Dimson |
-| Markowitz | μ = moyenne arithmétique annualisée, Σ = covariance annualisée (blocs de 5 séances), long-only ; allocations instables car μ est très bruité |
+| Clôtures non synchrones | Paris clôture avant New York : corrélations et bêtas quotidiens sont biaisés vers zéro. Covariances du Monte Carlo estimées sur blocs de 5 séances, bêtas de Dimson |
 | RAG | Seuil sur la similarité cosinus réelle (0,30, à calibrer) ; chiffres de la réponse vérifiés contre le contexte fourni au LLM |
 
 ## Démarrage (Docker)
@@ -133,7 +131,6 @@ Seuls les appels réseau (Yahoo, JustETF, LLM) et Redis y sont remplacés par de
 | GET | `/api/v1/portfolio/performance` | Performance réelle (TWR, XIRR, benchmark) |
 | POST | `/api/v1/portfolio/metrics` | Risque ex-ante de la composition actuelle |
 | POST | `/api/v1/portfolio/stress-scenarios` | Stress tests historiques |
-| POST | `/api/v1/portfolio/optimize` | Frontière efficiente de Markowitz |
 | POST | `/api/v1/simulate` | Monte Carlo (résultat par WebSocket `/ws/{client_id}`) |
 | GET | `/api/v1/etf/{ticker}/look-through` | Positions d'un ETF |
 | POST | `/api/v1/rag/ask` | Question à l'assistant |
@@ -162,7 +159,7 @@ Seuls les appels réseau (Yahoo, JustETF, LLM) et Redis y sont remplacés par de
 app/
   api/        FastAPI : endpoints (main.py) et schémas Pydantic
   core/       Pool de connexions PostgreSQL et migration du schéma au démarrage
-  quant/      Calculs : ratios, métriques, performance réelle, Monte Carlo, stress tests, Markowitz
+  quant/      Calculs : ratios, métriques, performance réelle, Monte Carlo, stress tests
   services/   Données de marché, fiches ETF, portefeuille, géographie, RAG, LLM
   worker/     Tâches Celery (Monte Carlo)
 dags/         DAG Airflow (cours quotidiens, fiches + RAG hebdomadaires)

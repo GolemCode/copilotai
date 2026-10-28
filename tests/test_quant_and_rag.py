@@ -3,7 +3,6 @@ import polars as pl
 from datetime import date
 
 from app.quant.metrics import compute_portfolio_metrics
-from app.quant.optimization import optimize_portfolio
 from app.api.schemas import (
     PortfolioMetricsRequest,
     RagQueryResponse,
@@ -68,35 +67,6 @@ def test_portfolio_metrics_calculation():
     assert len(breakdown) == 2
     assert breakdown[0]["ticker"] == "ASSET_A"
     assert breakdown[0]["weight_pct"] == 60.0
-
-def test_markowitz_optimization():
-    tickers = ["AAPL", "MSFT", "GOOGL"]
-    expected_returns = np.array([0.15, 0.12, 0.10])
-    cov_matrix = np.array([
-        [0.040, 0.015, 0.010],
-        [0.015, 0.035, 0.012],
-        [0.010, 0.012, 0.030]
-    ])
-
-    opt_results = optimize_portfolio(
-        expected_returns=expected_returns,
-        covariance_matrix=cov_matrix,
-        tickers=tickers,
-        risk_free_rate=0.03
-    )
-
-    assert "max_sharpe" in opt_results
-    assert "min_volatility" in opt_results
-    assert "efficient_frontier" in opt_results
-
-    max_sharpe = opt_results["max_sharpe"]
-    assert max_sharpe["sharpe_ratio"] > 0
-    weights = max_sharpe["weights"]
-    total_w = sum(weights.values())
-    assert abs(total_w - 100.0) < 1.0  # Tolérance d'arrondi
-
-    frontier = opt_results["efficient_frontier"]
-    assert len(frontier) > 0
 
 def test_pydantic_schemas():
     # Test RagQueryResponse
