@@ -6,7 +6,7 @@ import asyncpg
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.core.db import DATABASE_URL
+from app.core.settings import DATABASE_URL
 from app.services.fund_data import load_fund_snapshot, refresh_fund_data
 from app.services.market_data import ensure_schema
 from app.services.rag_ingestion import index_fund_documents, purge_legacy_documents

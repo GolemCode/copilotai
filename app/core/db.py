@@ -1,15 +1,7 @@
 import asyncpg
-import os
 from typing import AsyncGenerator
 
-# Récupération stricte des variables d'environnement injectées par Docker
-DB_USER = os.getenv("DB_USER", "admin")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
-DB_NAME = os.getenv("DB_NAME", "copilot_db")
-DB_HOST = os.getenv("DB_HOST", "db") # 'db' est le nom du service dans docker-compose
-DB_PORT = os.getenv("DB_PORT", "5432")
-
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+from app.core.settings import DATABASE_URL
 
 class DatabaseManager:
     def __init__(self):

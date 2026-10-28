@@ -1,9 +1,6 @@
-import os
 from celery import Celery
 
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+from app.core.settings import REDIS_URL
 
 # Initialisation de l'application Celery avec inclusion explicite
 celery_app = Celery(

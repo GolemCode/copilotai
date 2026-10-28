@@ -1,17 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getAssetCategory } from '../utils/assetClassifier';
-
-const getDisplayTicker = (ticker) => ticker.split('.')[0];
-
-const getExchangeName = (ticker) => {
-  if (ticker.endsWith('.PA')) return 'Paris (EUR)';
-  if (ticker.endsWith('.DE')) return 'Xetra (EUR)';
-  if (ticker.endsWith('.L')) return 'Londres';
-  if (ticker.endsWith('.AS')) return 'Amsterdam';
-  if (ticker.endsWith('.MI')) return 'Milan';
-  if (ticker.includes('.')) return ticker.split('.')[1];
-  return 'US (USD)';
-};
+import { formatDate, getDisplayTicker, getExchangeName } from '../utils/format';
 
 const SCENARIO_ICONS = {
   worst_period: '📉',
@@ -20,8 +9,6 @@ const SCENARIO_ICONS = {
   monteCarloRisk: '🎲',
   custom: '🎛️'
 };
-
-const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '');
 
 export const StressTestPositionsTable = ({
   portfolio = [],

@@ -101,3 +101,8 @@ class StressScenarioRequest(BaseModel):
     years: int = Field(default=3, ge=1, le=10)
     # Indice de marché de référence pour le bêta et le scénario "pire mois du marché" (MSCI World en EUR)
     market_ticker: str = "CW8.PA"
+
+class PipelineScrapeRequest(BaseModel):
+    tickers: Optional[List[str]] = None
+    # True : re-télécharge l'historique complet (à lancer une fois après migration du stockage)
+    full_refresh: bool = False

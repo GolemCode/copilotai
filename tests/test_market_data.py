@@ -56,21 +56,28 @@ D1, D2, D3 = date(2026, 10, 20), date(2026, 10, 21), date(2026, 10, 22)
 
 
 def test_incremental_rows_are_appended_when_adjustment_factor_is_unchanged():
-    stored = {D1: 98.0, D2: 99.0}
+    stored = {D1: (100.0, 98.0), D2: (101.0, 99.0)}
     fresh = [(D2, 101.0, 99.0, 0), (D3, 102.0, 100.0, 0)]
+    assert needs_full_refresh(stored, fresh) is False
+
+
+def test_intraday_bar_price_change_does_not_trigger_refresh():
+    # Barre du jour enregistrée pendant la séance (103) puis clôture (105) : même facteur, pas de dividende
+    stored = {D2: (101.0, 99.0), D3: (103.0, 103.0)}
+    fresh = [(D2, 101.0, 99.0, 0), (D3, 105.0, 105.0, 0)]
     assert needs_full_refresh(stored, fresh) is False
 
 
 def test_dividend_triggers_full_refresh():
     # Un dividende de 1 % a été détaché : Yahoo a réduit tout l'historique ajusté de 1 %
-    stored = {D1: 98.0, D2: 99.0}
+    stored = {D1: (100.0, 98.0), D2: (101.0, 99.0)}
     fresh = [(D2, 101.0, 99.0 * 0.99, 0), (D3, 101.0, 100.0, 0)]
     assert needs_full_refresh(stored, fresh) is True
 
 
 def test_data_gap_triggers_full_refresh():
     # Aucune date commune : le pipeline n'a pas tourné depuis plus de 5 séances
-    assert needs_full_refresh({D1: 98.0}, [(D3, 102.0, 100.0, 0)]) is True
+    assert needs_full_refresh({D1: (100.0, 98.0)}, [(D3, 102.0, 100.0, 0)]) is True
 
 
 class _FakeConn:
@@ -81,7 +88,7 @@ class _FakeConn:
 
     async def fetch(self, query, asset_id, first_date):
         return [
-            {"market_date": d, "adjusted_close": v[1]}
+            {"market_date": d, "close_price": v[0], "adjusted_close": v[1]}
             for d, v in self.data.get(asset_id, {}).items() if d >= first_date
         ]
 

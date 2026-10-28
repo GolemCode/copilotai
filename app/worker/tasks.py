@@ -3,12 +3,11 @@ import json
 import numpy as np
 import polars as pl
 import redis
+from app.core.settings import REDIS_HOST, REDIS_PORT
 from app.worker.celery_app import celery_app
 from app.quant.monte_carlo import generate_monte_carlo_simulation
 
 # Connexion synchrone pour le worker vers l'instance Redis
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 
 @celery_app.task(name="compute_risk_metrics")

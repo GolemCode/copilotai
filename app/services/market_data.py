@@ -25,6 +25,21 @@ BASE_CURRENCY = "EUR"
 # Catégories d'actifs non cotés déclarées par l'utilisateur : aucune source de cours,
 # valorisées au prix de transaction saisi (valeur comptable).
 NON_LISTED_TICKERS = {"SCPI-EUR", "PE-EUR", "CASH-EUR"}
+
+# Univers suivi par défaut (chargement initial et pipeline quotidien), en plus des actifs déjà en base
+MARKET_REFERENCE_TICKERS = [
+    # ETF actions monde, US, Europe, émergents
+    "CW8.PA", "WPEA.PA", "PE500.PA", "ESE.PA", "PUST.PA", "SPY", "QQQ", "DIA", "IWM", "VTI", "VEA", "VWO",
+    "CAC.PA", "ETZ.PA", "MSE.PA", "PAEEM.PA", "PABZ.PA",
+    # Secteurs et thématiques
+    "XLK", "XLF", "XLV", "XLE", "SMH", "ICLN",
+    # Obligations, monétaire (€STR, taux sans risque), matières premières
+    "TLT", "AGG", "XEON.DE", "GLD", "SLV",
+    # Actions françaises
+    "AIR.PA", "MC.PA", "OR.PA", "SAN.PA", "TTE.PA", "BNP.PA", "SU.PA",
+    # Taux de change pour la conversion en EUR
+    "EURUSD=X",
+]
 FULL_HISTORY_PERIOD = "3y"
 INCREMENTAL_PERIOD = "5d"
 # Écart relatif toléré entre cours ajusté stocké et cours ajusté frais sur une même date.
@@ -279,21 +294,27 @@ async def _replace_history(conn, asset_id: int, rows: List[Tuple[date, float, fl
 
 
 def needs_full_refresh(
-    stored_adjusted: Dict[date, float],
+    stored: Dict[date, Tuple[float, float]],
     fresh_rows: List[Tuple[date, float, float, int]],
     tolerance: float = ADJUSTMENT_TOLERANCE,
 ) -> bool:
     """
     Indique si l'historique stocké doit être re-téléchargé avant d'y ajouter des cours frais.
+    stored : {date: (cours brut, cours ajusté)} déjà en base sur la période téléchargée.
 
     - Aucune date commune : actif vierge ou trou de données (pipeline non exécuté plusieurs jours).
-    - Cours ajusté différent sur une date commune : Yahoo a appliqué un nouveau dividende/split à
-      tout l'historique ; recoller tel quel effacerait ce dividende des rendements.
+    - Facteur d'ajustement (ajusté / brut) différent sur une date commune : Yahoo a appliqué un nouveau
+      dividende ou split à tout l'historique ; recoller tel quel effacerait ce dividende des rendements.
+      On compare le facteur et non le cours : la barre du jour, enregistrée pendant la séance, change
+      de prix d'une exécution à l'autre sans que l'historique soit ré-ajusté.
     """
-    overlap = [(stored_adjusted[d], adj) for d, _, adj, _ in fresh_rows if d in stored_adjusted]
+    overlap = [(stored[d], (close, adj)) for d, close, adj, _ in fresh_rows if d in stored]
     if not overlap:
         return True
-    return any(abs(adj / stored - 1.0) > tolerance for stored, adj in overlap)
+    return any(
+        abs((adj / close) / (s_adj / s_close) - 1.0) > tolerance
+        for (s_close, s_adj), (close, adj) in overlap
+    )
 
 
 async def sync_market_data(conn, ticker_ids: Dict[str, int], full: bool = False) -> Dict[str, Any]:
@@ -316,11 +337,11 @@ async def sync_market_data(conn, ticker_ids: Dict[str, int], full: bool = False)
                 continue
             first_date = min(r[0] for r in rows)
             stored = await conn.fetch(
-                "SELECT market_date, adjusted_close FROM market_data WHERE asset_id = $1 AND market_date >= $2;",
+                "SELECT market_date, close_price, adjusted_close FROM market_data WHERE asset_id = $1 AND market_date >= $2;",
                 ticker_ids[ticker], first_date,
             )
-            stored_adjusted = {r["market_date"]: float(r["adjusted_close"]) for r in stored}
-            if needs_full_refresh(stored_adjusted, rows):
+            stored_prices = {r["market_date"]: (float(r["close_price"]), float(r["adjusted_close"])) for r in stored}
+            if needs_full_refresh(stored_prices, rows):
                 to_refresh.append(ticker)
             else:
                 upserted += await _upsert_rows(conn, ticker_ids[ticker], rows)

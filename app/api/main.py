@@ -15,7 +15,6 @@ import polars as pl
 from datetime import datetime, date, timezone
 import math
 import yfinance as yf
-from pydantic import BaseModel
 
 from app.api.schemas import (
     PortfolioSimulationRequest,
@@ -30,9 +29,11 @@ from app.api.schemas import (
     PortfolioGeoExposureRequest,
     PortfolioGeoExposureResponse,
     TransactionCreateRequest,
-    StressScenarioRequest
+    StressScenarioRequest,
+    PipelineScrapeRequest
 )
 from app.core.db import db_manager, get_db_connection
+from app.core.settings import REDIS_HOST, REDIS_PORT
 from app.services.geo_exposure import get_asset_geo_exposure, get_portfolio_geo_exposure
 from app.worker.tasks import compute_risk_metrics_task
 from app.services.llm import ask_financial_assistant
@@ -68,8 +69,14 @@ from app.services.market_data import (
     risk_free_rate,
     sync_market_data,
     BASE_CURRENCY,
+    MARKET_REFERENCE_TICKERS,
     NON_LISTED_TICKERS,
 )
+
+def _redis() -> aioredis.Redis:
+    """Client Redis asynchrone (canal WebSocket et bilans des pipelines)."""
+    return aioredis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,7 +108,7 @@ app.add_middleware(
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await websocket.accept()
     
-    redis_client = aioredis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0, decode_responses=True)
+    redis_client = _redis()
     pubsub = redis_client.pubsub()
     
     channel_name = f"ws_channel_{client_id}"
@@ -675,23 +682,6 @@ async def rag_ingest_documents_endpoint(
 
 # --- Endpoints de Pipeline & Automatisation du Scraping ---
 
-CORE_PIPELINE_UNIVERSE = [
-    # ETFs Monde & US
-    "SPY", "QQQ", "DIA", "IWM", "VTI", "VEA", "VWO", "CW8.PA", "WPEA.PA", "PE500.PA", "PUST.PA",
-    # Secteurs & Thématiques
-    "XLK", "XLF", "XLV", "XLE", "SMH", "ICLN",
-    # Obligations, Monétaire & Matières premières
-    "TLT", "AGG", "GLD", "SLV", "XEON.DE",
-    # Valeurs Européennes / CAC 40
-    "CAC.PA", "ETZ.PA", "MSE.PA", "PAEEM.PA", "AIR.PA", "MC.PA", "OR.PA", "SAN.PA", "TTE.PA", "BNP.PA", "SU.PA"
-]
-
-CORE_RAG_TICKERS = RAG_REFERENCE_TICKERS
-
-class PipelineScrapeRequest(BaseModel):
-    tickers: Optional[List[str]] = None
-    # True : re-télécharge l'historique complet (à lancer une fois après migration du stockage)
-    full_refresh: bool = False
 
 @app.post("/api/v1/pipeline/daily-market")
 async def run_daily_market_pipeline_endpoint(
@@ -717,7 +707,7 @@ async def run_daily_market_pipeline_endpoint(
                 SELECT DISTINCT a.ticker FROM assets a
                 JOIN market_data m ON m.asset_id = a.id;
             """)
-            base_tickers = {r["ticker"] for r in tracked} | set(CORE_PIPELINE_UNIVERSE)
+            base_tickers = {r["ticker"] for r in tracked} | set(MARKET_REFERENCE_TICKERS)
 
         currencies = {t: infer_currency(t) for t in base_tickers}
         rows = await conn.fetch("SELECT ticker, currency FROM assets WHERE ticker = ANY($1::varchar[]);", list(base_tickers))
@@ -734,7 +724,7 @@ async def run_daily_market_pipeline_endpoint(
         sync_summary = await sync_market_data(conn, ticker_id_map, full=full_refresh)
 
         # 4. Bilan d'exécution dans Redis
-        redis_client = aioredis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0, decode_responses=True)
+        redis_client = _redis()
         scrape_summary = {
             "status": "success",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -782,7 +772,7 @@ async def run_rag_ingestion_pipeline_endpoint(
                 SELECT a.ticker FROM assets a JOIN fund_profiles p ON p.asset_id = a.id;
             """)
             target_tickers = sorted(
-                (set(CORE_RAG_TICKERS) | {r["ticker"] for r in tracked}) - NON_LISTED_TICKERS
+                (set(RAG_REFERENCE_TICKERS) | {r["ticker"] for r in tracked}) - NON_LISTED_TICKERS
             )
         else:
             target_tickers = sorted({t.strip().upper() for t in request.tickers})
@@ -800,7 +790,7 @@ async def run_rag_ingestion_pipeline_endpoint(
                 WHERE p.asset_id = a.id AND a.ticker = ANY($1::varchar[]);
             """, fund_summary["failed"])
 
-        redis_client = aioredis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0, decode_responses=True)
+        redis_client = _redis()
         rag_summary = {
             "status": "success",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -888,7 +878,7 @@ async def auto_scrape_asset_endpoint(
 async def get_pipeline_status_endpoint(conn=Depends(get_db_connection)):
     """Retourne l'état complet des pipelines, de la base de données et de la fraîcheur des données."""
     try:
-        redis_client = aioredis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0, decode_responses=True)
+        redis_client = _redis()
         
         last_scrape_raw = await redis_client.get("pipeline:last_market_scrape")
         last_rag_raw = await redis_client.get("pipeline:last_rag_ingestion")

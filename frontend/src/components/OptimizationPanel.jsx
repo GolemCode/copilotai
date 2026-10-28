@@ -9,8 +9,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
-
-const formatPct = (value) => (value === null || value === undefined ? '—' : `${value.toFixed(2)} %`);
+import { formatPct } from '../utils/format';
 
 /**
  * Optimisation moyenne-variance (Markowitz, long-only) des lignes cotées du portefeuille.

@@ -1,10 +1,4 @@
-
-const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '');
-const formatPct = (value, signed = true) => {
-  if (value === null || value === undefined) return '—';
-  const sign = signed && value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)} %`;
-};
+import { formatDate, formatPct } from '../utils/format';
 
 /**
  * Indicateurs clés.
@@ -34,7 +28,7 @@ export const MetricsCards = ({
     : null;
   const perfSubtitle = performance
     ? (performance.is_annualized
-      ? `Annualisée depuis le ${formatDate(performance.start_date)}${performance.mwr_annualized_pct != null ? ` · XIRR ${formatPct(performance.mwr_annualized_pct)}` : ''}`
+      ? `Annualisée depuis le ${formatDate(performance.start_date)}${performance.mwr_annualized_pct != null ? ` · XIRR ${formatPct(performance.mwr_annualized_pct, true)}` : ''}`
       : `Cumulée depuis le ${formatDate(performance.start_date)} (moins d'un an : non annualisée)`)
     : 'Aucune opération sur un actif coté';
 
@@ -60,7 +54,7 @@ export const MetricsCards = ({
         <div className="kpi-subtitle">
           Plus-value latente : <strong className={isPnlPositive ? 'text-success' : 'text-danger'}>
             {isPnlPositive ? '+' : ''}{unrealizedPnl.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-            {unrealizedPnlPct !== null && ` (${formatPct(unrealizedPnlPct)})`}
+            {unrealizedPnlPct !== null && ` (${formatPct(unrealizedPnlPct, true)})`}
           </strong>
         </div>
       </div>
@@ -71,7 +65,7 @@ export const MetricsCards = ({
           Performance réelle (TWR)
         </span>
         <div className={`kpi-value ${perfValue !== null && perfValue < 0 ? 'text-danger' : 'text-success'}`}>
-          {formatPct(perfValue)}
+          {formatPct(perfValue, true)}
         </div>
         <div className="kpi-subtitle">{perfSubtitle}</div>
       </div>
@@ -92,11 +86,11 @@ export const MetricsCards = ({
       <div className="kpi-card border-kpi-amber">
         <span className="kpi-title">{volatilityLabel}</span>
         <div className="kpi-value text-amber">
-          {formatPct(volatility, false)}
+          {formatPct(volatility)}
         </div>
         <div className="kpi-subtitle">
           {hasRealizedRisk && summary?.annualized_volatility_pct != null
-            ? `Ex-ante (poids actuels, ${exAnteYears ?? '?'} ans) : ${formatPct(summary.annualized_volatility_pct, false)}`
+            ? `Ex-ante (poids actuels, ${exAnteYears ?? '?'} ans) : ${formatPct(summary.annualized_volatility_pct)}`
             : 'Poids actuels appliqués aux rendements historiques'}
         </div>
       </div>

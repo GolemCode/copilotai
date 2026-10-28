@@ -11,6 +11,7 @@ import { GeographicAllocationChart } from './components/GeographicAllocationChar
 import { StressTestPositionsTable } from './components/StressTestPositionsTable';
 import { OptimizationPanel } from './components/OptimizationPanel';
 import { getAssetCategory } from './utils/assetClassifier';
+import { getDisplayTicker, getExchangeName } from './utils/format';
 import {
   BarChart,
   Bar,
@@ -69,18 +70,6 @@ const CustomSimulationTooltip = ({ active, payload, label }) => {
     );
   }
   return null;
-};
-
-const getDisplayTicker = (ticker) => ticker.split('.')[0];
-
-const getExchangeName = (ticker) => {
-  if (ticker.endsWith('.PA')) return 'Paris (EUR)';
-  if (ticker.endsWith('.DE')) return 'Xetra (EUR)';
-  if (ticker.endsWith('.L')) return 'Londres';
-  if (ticker.endsWith('.AS')) return 'Amsterdam';
-  if (ticker.endsWith('.MI')) return 'Milan';
-  if (ticker.includes('.')) return ticker.split('.')[1];
-  return 'US (USD)';
 };
 
 // Exposition géographique : uniquement les répartitions par pays publiées (JustETF / Yahoo),

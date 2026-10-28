@@ -1,9 +1,9 @@
-import os
 import re
 import logging
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 
+from app.core.settings import PSYCOPG_CONNINFO, SQLALCHEMY_DATABASE_URL
 from app.services.rag_validation import MIN_COSINE_SIMILARITY, cosine_similarity_from_distance
 
 logger = logging.getLogger(__name__)
@@ -62,14 +62,6 @@ except ImportError:
                         result.append(Document(page_content=c, metadata=meta))
                 return result
 
-# 1. Configuration résiliente de la base de données
-DB_USER = os.getenv("DB_USER") or os.getenv("POSTGRES_USER", "admin")
-DB_PASS = os.getenv("DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD", "password")
-DB_HOST = os.getenv("DB_HOST", "db")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB", "copilot_db")
-
-CONNECTION_STRING = f"postgresql+psycopg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 COLLECTION_NAME = "financial_rag_store"
 
 # Singletons paresseux (Lazy-loading)
@@ -94,7 +86,7 @@ def get_vectorstore():
         _vectorstore = PGVector(
             embeddings=embeddings,
             collection_name=COLLECTION_NAME,
-            connection=CONNECTION_STRING,
+            connection=SQLALCHEMY_DATABASE_URL,
             use_jsonb=True,
         )
     return _vectorstore
@@ -215,7 +207,7 @@ def delete_documents_by_tickers(tickers: List[str]):
     import psycopg
     try:
         clean_tickers = [t.strip().upper() for t in tickers]
-        with psycopg.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}") as conn:
+        with psycopg.connect(PSYCOPG_CONNINFO) as conn:
             with conn.cursor() as cur:
                 for t in clean_tickers:
                     cur.execute("DELETE FROM langchain_pg_embedding WHERE cmetadata->>'ticker' = %s;", (t,))
@@ -232,7 +224,7 @@ def purge_legacy_documents() -> int:
     """
     import psycopg
     try:
-        with psycopg.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}") as conn:
+        with psycopg.connect(PSYCOPG_CONNINFO) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     DELETE FROM langchain_pg_embedding
@@ -271,7 +263,7 @@ def purge_fund_documents_except(tickers: List[str]) -> int:
     import psycopg
     keep = [t.strip().upper() for t in tickers]
     try:
-        with psycopg.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}") as conn:
+        with psycopg.connect(PSYCOPG_CONNINFO) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     DELETE FROM langchain_pg_embedding
@@ -304,7 +296,7 @@ def get_documents_for_tickers(tickers: List[str]) -> List[Dict[str, Any]]:
     keys = sorted({t.strip().upper() for t in tickers})
     bases = sorted({k.split(".")[0] for k in keys})
     try:
-        with psycopg.connect(f"dbname={DB_NAME} user={DB_USER} password={DB_PASS} host={DB_HOST} port={DB_PORT}") as conn:
+        with psycopg.connect(PSYCOPG_CONNINFO) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT document, cmetadata FROM langchain_pg_embedding

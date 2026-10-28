@@ -5,6 +5,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from groq import AsyncGroq
 
+from app.core.settings import PSYCOPG_CONNINFO
 from app.services.rag_ingestion import find_explicit_tickers, get_documents_for_tickers, search_similar_documents
 from app.services.rag_validation import find_unverified_numbers
 
@@ -65,88 +66,69 @@ def extract_doc_structured_info(content: str) -> Dict[str, Any]:
     return info
 
 def fetch_source_for_ticker(ticker: str) -> Optional[Dict[str, Any]]:
-    """Récupère une source documentaire pour un ticker depuis PGVector ou la table assets."""
+    """Source à afficher pour un ticker cité : sa fiche indexée, sinon sa ligne du référentiel d'actifs."""
     clean = ticker.strip().upper()
     clean_base = clean.split(".")[0]
     if len(clean_base) < 2:
         return None
-    
+
+    docs = get_documents_for_tickers([clean])
+    if docs:
+        doc = docs[0]
+        content = doc["content"]
+        parsed_info = extract_doc_structured_info(content)
+        snippet = content[:240] + "..." if len(content) > 240 else content
+        return {
+            "ticker": doc["ticker"],
+            "name": doc["name"],
+            "category": doc["category"],
+            # Source récupérée par ticker exact, pas par recherche sémantique : pas de score
+            "similarity_score_pct": None,
+            "match_type": "direct",
+            "snippet": snippet,
+            "strategy": parsed_info.get("strategy") or snippet,
+            "aum": parsed_info.get("aum"),
+            "holdings": parsed_info.get("holdings", []),
+            "paris_aligned": parsed_info.get("paris_aligned", False),
+            "source_url": doc["source_url"],
+            "pdf_url": doc.get("pdf_url") or f"https://www.justetf.com/fr/search.html?search=ETFS&query={clean_base}",
+            "provider": doc["provider"],
+        }
+
     try:
         import psycopg
-        db_user = os.getenv("DB_USER") or os.getenv("POSTGRES_USER", "admin")
-        db_pass = os.getenv("DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD", "password")
-        db_host = os.getenv("DB_HOST", "db")
-        db_port = os.getenv("DB_PORT", "5432")
-        db_name = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB", "copilot_db")
-
-        with psycopg.connect(f"dbname={db_name} user={db_user} password={db_pass} host={db_host} port={db_port}") as conn:
+        with psycopg.connect(PSYCOPG_CONNINFO) as conn:
             with conn.cursor() as cur:
-                # 1. Chercher dans langchain_pg_embedding
-                cur.execute("""
-                    SELECT document, cmetadata 
-                    FROM langchain_pg_embedding 
-                    WHERE UPPER(cmetadata->>'ticker') = %s 
-                       OR UPPER(cmetadata->>'ticker') = %s
-                       OR UPPER(cmetadata->>'ticker') LIKE %s
-                    ORDER BY CASE WHEN UPPER(cmetadata->>'ticker') = %s THEN 0 ELSE 1 END
-                    LIMIT 1;
-                """, (clean, clean_base, f"{clean_base}.%", clean))
-                row = cur.fetchone()
-                if row:
-                    content, meta = row[0], row[1] or {}
-                    parsed_info = extract_doc_structured_info(content)
-                    snippet = content[:240] + "..." if len(content) > 240 else content
-                    raw_ticker = meta.get("ticker", clean)
-                    return {
-                        "ticker": raw_ticker,
-                        "name": meta.get("name", meta.get("title", raw_ticker)),
-                        "category": meta.get("category", "FNB / ETF"),
-                        # Source récupérée par ticker exact, pas par recherche sémantique : pas de score
-                        "similarity_score_pct": None,
-                        "match_type": "direct",
-                        "snippet": snippet,
-                        "strategy": parsed_info.get("strategy") or snippet,
-                        "aum": parsed_info.get("aum"),
-                        "holdings": parsed_info.get("holdings", []),
-                        "paris_aligned": parsed_info.get("paris_aligned", False),
-                        "source_url": meta.get("source_url") or f"https://finance.yahoo.com/quote/{raw_ticker}",
-                        "pdf_url": meta.get("pdf_url") or f"https://www.justetf.com/fr/search.html?search=ETFS&query={clean_base}",
-                        "provider": meta.get("provider", "Yahoo Finance & Référentiel Émetteur")
-                    }
-
-                # 2. Chercher dans la table assets
                 cur.execute("""
                     SELECT ticker, name, asset_class, sector
-                    FROM assets 
-                    WHERE UPPER(ticker) = %s 
-                       OR UPPER(ticker) = %s
-                       OR UPPER(ticker) LIKE %s
+                    FROM assets
+                    WHERE UPPER(ticker) = %s OR UPPER(ticker) = %s OR UPPER(ticker) LIKE %s
                     LIMIT 1;
                 """, (clean, clean_base, f"{clean_base}.%"))
                 asset_row = cur.fetchone()
-                if asset_row:
-                    t, n, ac, sec = asset_row
-                    category = ac or sec or "Actif Coté"
-                    desc_clean = f"Actif financier {n or t} ({category}) coté sous le symbole {t}."
-                    snippet = desc_clean
-                    return {
-                        "ticker": t,
-                        "name": n or t,
-                        "category": category,
-                        "similarity_score_pct": None,
-                        "match_type": "direct",
-                        "snippet": snippet,
-                        "strategy": desc_clean,
-                        "aum": None,
-                        "holdings": [],
-                        "paris_aligned": False,
-                        "source_url": f"https://finance.yahoo.com/quote/{t}",
-                        "pdf_url": f"https://www.justetf.com/fr/search.html?search=ETFS&query={clean_base}",
-                        "provider": "Bourse & Marché Financier"
-                    }
     except Exception as e:
         logger.warning(f"Erreur lors de la récupération directe de la source pour {ticker} : {e}")
-    return None
+        return None
+    if not asset_row:
+        return None
+    t, n, ac, sec = asset_row
+    category = ac or sec or "Actif Coté"
+    desc_clean = f"Actif financier {n or t} ({category}) coté sous le symbole {t}."
+    return {
+        "ticker": t,
+        "name": n or t,
+        "category": category,
+        "similarity_score_pct": None,
+        "match_type": "direct",
+        "snippet": desc_clean,
+        "strategy": desc_clean,
+        "aum": None,
+        "holdings": [],
+        "paris_aligned": False,
+        "source_url": f"https://finance.yahoo.com/quote/{t}",
+        "pdf_url": f"https://www.justetf.com/fr/search.html?search=ETFS&query={clean_base}",
+        "provider": "Bourse & Marché Financier",
+    }
 
 OFF_TOPIC_TERMS = [
     "crepe", "crêpe", "recette", "cuisine", "gâteau", "gateau", "cuisinez", "cuisiner",
