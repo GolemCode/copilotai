@@ -175,3 +175,14 @@ def test_max_sharpe_beats_random_portfolios():
     assert result["max_sharpe"]["sharpe_ratio"] >= round(float(random_sharpes.max()), 2)
     assert sum(result["max_sharpe"]["weights"].values()) == pytest.approx(100.0, abs=0.05)
     assert result["current"]["weights"]["A"] == pytest.approx(20.0)
+
+
+def test_holdings_history_values_current_quantities_on_past_prices():
+    from app.quant.performance import compute_holdings_history
+    close = pl.DataFrame({"market_date": D[:3], "X": [100.0, 110.0, 99.0], "Y": [50.0, 50.0, 55.0], "B": [10.0, 11.0, 12.0]})
+    series = compute_holdings_history({"X": 2, "Y": 4, "Z": 0}, close, benchmark="B")
+    assert [p["portfolio_value"] for p in series] == [400.0, 420.0, 418.0]   # 2·X + 4·Y à chaque date
+    assert series[-1]["cumulative_gain"] == pytest.approx(18.0)
+    assert series[-1]["twr_index"] == pytest.approx(104.5)
+    assert [p["benchmark_value"] for p in series] == [400.0, 440.0, 480.0]   # indice ramené à 400 €
+    assert series[0]["invested_capital"] is None

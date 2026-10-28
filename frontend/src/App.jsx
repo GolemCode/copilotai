@@ -314,6 +314,33 @@ function App() {
   }, [performanceRequest]);
   const performanceData = performanceRequest ? performanceState.data : null;
 
+  // 3 bis. Valeur historique des positions actuelles (quantités du jour × cours passés), vue continue
+  const holdingsRequest = useMemo(() => {
+    const held = portfolio
+      .filter(a => !NON_LISTED_TICKERS.includes(a.ticker))
+      .map(a => [a.ticker, getAssetTotalShares(a)])
+      .filter(([, shares]) => shares > 0);
+    return held.length > 0
+      ? JSON.stringify({ held, benchmark: benchmarkTicker, years: historicalYears, refresh: dataRefreshTick })
+      : null;
+  }, [portfolio, benchmarkTicker, historicalYears, dataRefreshTick]);
+  const [holdingsState, setHoldingsState] = useState({ request: null, data: null });
+
+  useEffect(() => {
+    if (!holdingsRequest) return undefined;
+    let cancelled = false;
+    const { benchmark, years } = JSON.parse(holdingsRequest);
+    fetch(`/api/v1/portfolio/holdings-history?years=${years}&benchmark=${encodeURIComponent(benchmark)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => { if (!cancelled) setHoldingsState({ request: holdingsRequest, data }); })
+      .catch(err => {
+        console.error("Erreur de la valeur historique des positions :", err);
+        if (!cancelled) setHoldingsState({ request: holdingsRequest, data: null });
+      });
+    return () => { cancelled = true; };
+  }, [holdingsRequest]);
+  const holdingsHistory = holdingsRequest ? holdingsState.data : null;
+
   // 4. Exposition géographique (répartitions par pays stockées en base)
   const geoRequest = useMemo(() => {
     const tickers = [...new Set(portfolio.map(a => a.ticker).filter(Boolean))].sort();
@@ -1116,6 +1143,7 @@ function App() {
               <div className="history-chart-fullwidth">
                 <PortfolioHistoryChart
                   timeSeries={performanceData?.time_series || []}
+                  holdingsSeries={holdingsHistory?.time_series || []}
                   emptyMessage={performanceData?.message}
                   benchmarkTicker={benchmarkTicker}
                   currentPeriod={historicalYears}

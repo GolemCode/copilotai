@@ -247,6 +247,7 @@ def test_portfolio_lifecycle_and_real_performance(pg_uri):
         except m.HTTPException as e:
             out["unsafe_delete"] = e.status_code
         out["performance"] = await m.portfolio_performance_endpoint(benchmark="CW8.PA", conn=conn)
+        out["holdings"] = await m.portfolio_holdings_history_endpoint(years=3, benchmark="CW8.PA", conn=conn)
         out["final"] = await m.delete_portfolio_asset_endpoint("SCPI-EUR", conn=conn)
         return out
 
@@ -263,6 +264,13 @@ def test_portfolio_lifecycle_and_real_performance(pg_uri):
     assert perf["summary"]["net_invested_eur"] == pytest.approx(3 * tx["price"] - 500.0, rel=1e-4)
     assert perf["benchmark"]["ticker"] == "CW8.PA" and perf["time_series"]
     assert [a["ticker"] for a in r["final"]["assets"]] == ["SPY"]
+
+    holdings = r["holdings"]
+    assert holdings["quantities"] == {"SPY": 2.0} and holdings["excluded_non_listed"] == ["SCPI-EUR"]
+    # Série continue sur toute la période, même avant la date d'achat
+    assert holdings["time_series"][0]["date"] < str(buy_day) and len(holdings["time_series"]) > 300
+    last = holdings["time_series"][-1]
+    assert last["portfolio_value"] == pytest.approx(2 * RAW["SPY"][-1] / RAW["EURUSD=X"][-1], rel=1e-4)
 
 
 def test_pipeline_and_admin_guard(pg_uri):

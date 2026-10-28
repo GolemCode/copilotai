@@ -207,3 +207,37 @@ def compute_realized_performance(
         "benchmark": bench_block,
         "time_series": series,
     }
+
+
+def compute_holdings_history(
+    quantities: Dict[str, float],
+    close_eur: pl.DataFrame,
+    benchmark: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Valeur historique des positions ACTUELLES : quantités détenues aujourd'hui × cours de clôture passés (EUR).
+    Vue continue sur toute la période choisie, indépendante des dates d'achat (hors dividendes).
+    Le benchmark est ramené à la même valeur de départ pour comparer les trajectoires.
+    """
+    tickers = [t for t, q in quantities.items() if q > 0 and t in close_eur.columns]
+    if not tickers or close_eur.height == 0:
+        return []
+    dates = close_eur["market_date"].to_list()
+    values = close_eur.select(tickers).to_numpy().astype(float) @ np.array([quantities[t] for t in tickers], dtype=float)
+    start_value = float(values[0])
+    bench = close_eur[benchmark].to_numpy().astype(float) if benchmark and benchmark in close_eur.columns else None
+
+    series = []
+    for i, d in enumerate(dates):
+        point = {
+            "date": str(d),
+            "portfolio_value": round(float(values[i]), 2),
+            "twr_index": round(float(values[i] / start_value * 100.0), 4) if start_value > 0 else 100.0,
+            "cumulative_gain": round(float(values[i] - start_value), 2),
+            "invested_capital": None,
+        }
+        if bench is not None:
+            point["benchmark_index"] = round(float(bench[i] / bench[0] * 100.0), 4)
+            point["benchmark_value"] = round(float(start_value * bench[i] / bench[0]), 2)
+        series.append(point)
+    return series

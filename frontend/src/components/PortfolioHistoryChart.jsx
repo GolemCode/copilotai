@@ -54,8 +54,29 @@ const DEFAULT_COMPARISON_BENCHMARKS = [
  * - pourcentages : indice TWR, qui neutralise les apports et retraits ;
  * - benchmark : mêmes versements investis dans l'indice de référence.
  */
+// Deux vues : valeur historique des positions actuelles (continue) ou performance réelle depuis les achats
+const VIEW_MODES = {
+  holdings: {
+    label: 'Positions actuelles',
+    tag: 'Valeur historique des positions actuelles',
+    tagTitle: "Quantités détenues aujourd'hui × cours de clôture passés (EUR), hors dividendes",
+    subtitle: 'variation de valeur des positions actuelles',
+    benchHint: "Cliquez sur un indice pour comparer : indice ramené à la même valeur de départ",
+    empty: 'Ajoutez une ligne cotée au portefeuille pour afficher sa valeur historique.'
+  },
+  real: {
+    label: 'Performance réelle',
+    tag: 'Valeur réelle + dividendes perçus',
+    tagTitle: 'Valeur détenue + dividendes perçus ; le pourcentage est le rendement pondéré dans le temps (TWR), hors effet des apports',
+    subtitle: 'gain hors apports, performance TWR',
+    benchHint: "Cliquez sur un indice pour comparer : mêmes versements investis dans l'indice",
+    empty: "Ajoutez une opération sur un actif coté pour afficher l'historique réel du portefeuille."
+  }
+};
+
 export const PortfolioHistoryChart = ({
   timeSeries = [],
+  holdingsSeries = [],
   emptyMessage = null,
   benchmarkTicker = 'SPY',
   onPeriodChange,
@@ -64,6 +85,9 @@ export const PortfolioHistoryChart = ({
   comparisonBenchmarks = []
 }) => {
   const [activeTimeframe, setActiveTimeframe] = useState('1m');
+  const [viewMode, setViewMode] = useState('holdings');
+  const view = VIEW_MODES[viewMode];
+  const series = viewMode === 'holdings' ? holdingsSeries : timeSeries;
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
   const [selectedBenchmarkTicker, setSelectedBenchmarkTicker] = useState(benchmarkTicker || 'SPY');
@@ -80,30 +104,30 @@ export const PortfolioHistoryChart = ({
 
   // Découpage dynamique de la série temporelle
   const slicedSeries = useMemo(() => {
-    if (!timeSeries || timeSeries.length === 0) return [];
-    const n = timeSeries.length;
+    if (!series || series.length === 0) return [];
+    const n = series.length;
 
     switch (activeTimeframe) {
       case '1m':
-        return timeSeries.slice(Math.max(0, n - 22));
+        return series.slice(Math.max(0, n - 22));
       case '6m':
-        return timeSeries.slice(Math.max(0, n - 128));
+        return series.slice(Math.max(0, n - 128));
       case 'ytd': {
         const currentYear = new Date().getFullYear();
-        const ytdIdx = timeSeries.findIndex(pt => {
+        const ytdIdx = series.findIndex(pt => {
           if (!pt.date || pt.date === 'Start') return false;
           return pt.date.startsWith(`${currentYear}`);
         });
-        return ytdIdx >= 0 ? timeSeries.slice(ytdIdx) : timeSeries.slice(Math.max(0, n - 170));
+        return ytdIdx >= 0 ? series.slice(ytdIdx) : series.slice(Math.max(0, n - 170));
       }
       case '1y':
-        return timeSeries.slice(Math.max(0, n - 253));
+        return series.slice(Math.max(0, n - 253));
       case '5y':
       case 'max':
       default:
-        return timeSeries;
+        return series;
     }
-  }, [timeSeries, activeTimeframe]);
+  }, [series, activeTimeframe]);
 
   // Points de repère sur la période sélectionnée
   const startPoint = slicedSeries.length > 0 ? slicedSeries[0] : null;
@@ -179,11 +203,28 @@ export const PortfolioHistoryChart = ({
     }
   };
 
-  if (!timeSeries || timeSeries.length === 0) {
+  const viewSelector = (
+    <div className="chart-timeframe-segment" role="group" aria-label="Vue du graphique">
+      {Object.entries(VIEW_MODES).map(([id, mode]) => (
+        <button
+          key={id}
+          type="button"
+          className={`chart-segment-btn ${viewMode === id ? 'active' : ''}`}
+          onClick={() => setViewMode(id)}
+          title={mode.tagTitle}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (!series || series.length === 0) {
     return (
       <div className="portfolio-history-card">
+        {viewSelector}
         <div className="empty-history-box">
-          <p>{emptyMessage || "Ajoutez une opération sur un actif coté pour afficher l'historique réel du portefeuille."}</p>
+          <p>{(viewMode === 'real' && emptyMessage) || view.empty}</p>
         </div>
       </div>
     );
@@ -199,8 +240,9 @@ export const PortfolioHistoryChart = ({
       <div className="portfolio-chart-header">
         <div className="chart-header-main">
           <div className="chart-kpi-block">
-            <span className="chart-category-tag" title="Valeur détenue + dividendes perçus ; le pourcentage est le rendement pondéré dans le temps (TWR), hors effet des apports">
-              Valeur réelle + dividendes perçus
+            {viewSelector}
+            <span className="chart-category-tag" title={view.tagTitle}>
+              {view.tag}
             </span>
             <div className="chart-price-line">
               <span className="chart-primary-price">
@@ -219,7 +261,7 @@ export const PortfolioHistoryChart = ({
               {currentDisplayedValue.isHovered ? (
                 <span>Point au <strong>{currentDisplayedValue.dateLabel}</strong></span>
               ) : (
-                <span>Sur la période ({activeTfObj.title}) · gain hors apports, performance TWR</span>
+                <span>Sur la période ({activeTfObj.title}) · {view.subtitle}</span>
               )}
               {isComparing && (
                 <span className="benchmark-tag-active">
@@ -319,12 +361,14 @@ export const PortfolioHistoryChart = ({
                         </span>
                       </div>
 
-                      <div className="fintech-tooltip-item">
-                        <span className="tooltip-legend-label">Capital net investi :</span>
-                        <strong className="tooltip-legend-val">
-                          {pt.invested_capital.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                        </strong>
-                      </div>
+                      {pt.invested_capital != null && (
+                        <div className="fintech-tooltip-item">
+                          <span className="tooltip-legend-label">Capital net investi :</span>
+                          <strong className="tooltip-legend-val">
+                            {pt.invested_capital.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                          </strong>
+                        </div>
+                      )}
 
                       {isComparing && pt.displayBench !== null && (
                         <div className="fintech-tooltip-item">
@@ -392,7 +436,7 @@ export const PortfolioHistoryChart = ({
       <div className="benchmarks-comparison-strip">
         <div className="benchmarks-strip-header">
           <span className="benchmarks-strip-title">Benchmarks & Indices de Référence</span>
-          <span className="benchmarks-strip-hint">Cliquez sur un indice pour comparer : mêmes versements investis dans l'indice</span>
+          <span className="benchmarks-strip-hint">{view.benchHint}</span>
         </div>
 
         <div className="benchmarks-chips-container">

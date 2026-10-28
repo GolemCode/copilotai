@@ -49,7 +49,7 @@ from app.services.etf_screener import RAG_REFERENCE_TICKERS, get_popular_etfs
 from app.quant.estimation import weekly_covariance
 from app.quant.metrics import compute_portfolio_metrics
 from app.quant.optimization import optimize_portfolio
-from app.quant.performance import compute_realized_performance
+from app.quant.performance import compute_holdings_history, compute_realized_performance
 from app.quant.stress import compute_historical_stress
 from app.services.portfolio import (
     PortfolioError,
@@ -567,6 +567,35 @@ async def portfolio_performance_endpoint(benchmark: str = "CW8.PA", conn=Depends
     result["summary"]["risk_free_source"] = rf["source"]
     result["excluded_non_listed"] = excluded
     return result
+
+
+@app.get("/api/v1/portfolio/holdings-history")
+async def portfolio_holdings_history_endpoint(
+    years: int = 3, benchmark: str = "CW8.PA", conn=Depends(get_db_connection)
+):
+    """
+    Valeur historique des positions actuelles (quantités détenues aujourd'hui × cours passés, en EUR),
+    en continu sur la période demandée, avec le benchmark ramené à la même valeur de départ.
+    """
+    pid = await get_default_portfolio_id(conn)
+    rows = await conn.fetch("""
+        SELECT ticker, SUM(CASE WHEN side = 'buy' THEN quantity ELSE -quantity END) AS quantity
+        FROM portfolio_transactions WHERE portfolio_id = $1
+        GROUP BY ticker HAVING SUM(CASE WHEN side = 'buy' THEN quantity ELSE -quantity END) > 1e-9;
+    """, pid)
+    quantities = {r["ticker"]: float(r["quantity"]) for r in rows if r["ticker"] not in NON_LISTED_TICKERS}
+    excluded = sorted(r["ticker"] for r in rows if r["ticker"] in NON_LISTED_TICKERS)
+    if not quantities:
+        return {"time_series": [], "quantities": {}, "excluded_non_listed": excluded}
+
+    tickers = sorted(quantities)
+    panel_tickers = tickers + ([benchmark] if benchmark not in tickers else [])
+    _, close, _ = await load_base_currency_panel(conn, panel_tickers, years=min(10, max(1, years)))
+    return {
+        "time_series": compute_holdings_history(quantities, close, benchmark=benchmark),
+        "quantities": quantities,
+        "excluded_non_listed": excluded,
+    }
 
 
 @app.delete("/api/v1/portfolio/transactions/{transaction_id}")

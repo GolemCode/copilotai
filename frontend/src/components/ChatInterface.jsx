@@ -205,9 +205,9 @@ export const ChatInterface = ({
                                 </span>
                                 <span
                                   className={`source-score-pill score-${scoreTier}`}
-                                  title={isDirect ? 'Fiche récupérée par ticker exact (pas de recherche sémantique)' : 'Similarité cosinus avec la question'}
+                                  title={isDirect ? 'Fiche récupérée par ticker exact (pas de recherche sémantique)' : 'Similarité cosinus entre la question et la fiche (100 % = sens identique)'}
                                 >
-                                  {isDirect ? 'Source directe' : `cos ${(score / 100).toFixed(2)}`}
+                                  {isDirect ? 'Source directe' : `${Math.round(score)} % de similarité`}
                                 </span>
                               </div>
 
