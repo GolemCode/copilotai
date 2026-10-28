@@ -28,47 +28,6 @@ RAG_MODEL_CASCADE = [
 ]
 DESCRIPTION_MODEL = "llama-3.3-70b-versatile"
 
-def extract_doc_structured_info(content: str) -> Dict[str, Any]:
-    """Extrait proprement les sous-jacents, l'AUM et la stratégie résumée du document."""
-    info: Dict[str, Any] = {
-        "holdings": [],
-        "aum": None,
-        "strategy": "",
-        "paris_aligned": False
-    }
-    
-    lines = content.split("\n")
-    in_holdings = False
-    in_description = False
-    strategy_lines = []
-    
-    for line in lines:
-        stripped = line.strip()
-        if "Actifs sous gestion (AUM) :" in stripped:
-            info["aum"] = stripped.split(":", 1)[1].strip()
-        elif any(k in stripped for k in ["Principales positions", "Top Holdings", "Top 10 Holdings", "Mode Look-Through"]):
-            in_holdings = True
-        elif in_holdings:
-            if stripped.startswith("- "):
-                info["holdings"].append(stripped[2:].strip())
-            elif stripped:
-                # Toute autre ligne non vide clôt la liste des positions
-                in_holdings = False
-        elif "Description détaillée" in stripped:
-            in_description = True
-            continue
-        elif stripped.endswith(":") or stripped.startswith("- "):
-            # En-têtes et lignes des répartitions pays / secteurs : pas de la stratégie
-            in_description = False
-        elif in_description and len(strategy_lines) < 2 and stripped:
-            strategy_lines.append(stripped)
-            
-    info["strategy"] = " ".join(strategy_lines)[:250]
-    # Indice "Paris-Aligned Benchmark" (règlement UE 2020/1818) : déduit du nom officiel du fonds
-    name_line = next((line for line in lines if line.strip().startswith("Nom du fonds")), "")
-    info["paris_aligned"] = "paris aligned" in name_line.lower().replace("-", " ")
-    return info
-
 
 OFF_TOPIC_TERMS = [
     "crepe", "crêpe", "recette", "cuisine", "gâteau", "gateau", "cuisinez", "cuisiner",
@@ -280,7 +239,6 @@ async def ask_financial_assistant(
     context_parts = []
     
     for i, doc in enumerate(retrieved_docs, 1):
-        parsed_info = extract_doc_structured_info(doc.get("content", ""))
         snippet = doc["content"][:220] + "..." if len(doc["content"]) > 220 else doc["content"]
         
         sources_summary.append({
@@ -290,10 +248,6 @@ async def ask_financial_assistant(
             "similarity_score_pct": doc.get("similarity_score_pct"),
             "match_type": doc.get("match_type", "semantic"),
             "snippet": snippet,
-            "strategy": parsed_info.get("strategy") or snippet,
-            "aum": parsed_info.get("aum"),
-            "holdings": parsed_info.get("holdings", []),
-            "paris_aligned": parsed_info.get("paris_aligned", False),
             "source_url": doc.get("source_url") or f"https://finance.yahoo.com/quote/{doc.get('ticker', '')}",
             "pdf_url": doc.get("pdf_url") or f"https://www.justetf.com/fr/search.html?search=ETFS&query={doc.get('ticker', '')}",
             "provider": doc.get("provider", "Yahoo Finance & Émetteur")

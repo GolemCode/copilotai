@@ -108,7 +108,6 @@ def test_other_countries_are_not_redistributed():
 
 def test_rag_document_built_from_db_snapshot_marks_missing_fields():
     rag_ingestion = pytest.importorskip("app.services.rag_ingestion")
-    llm = pytest.importorskip("app.services.llm")
     snapshot = {
         "ticker": "CW8.PA",
         "profile": {"name": "Amundi MSCI World", "isin": "LU1681043599", "category": None, "fund_family": "Amundi",
@@ -122,10 +121,6 @@ def test_rag_document_built_from_db_snapshot_marks_missing_fields():
     assert "Actifs sous gestion (AUM) : Non publié" in doc.page_content
     assert "Frais courants (TER) : Non publié" in doc.page_content
     assert "- Apple : 5,12%" in doc.page_content
-
-    parsed = llm.extract_doc_structured_info(doc.page_content)
-    assert parsed["holdings"] == ["Apple : 5,12%"]  # la répartition par pays n'est pas lue comme une position
-    assert parsed["strategy"] == "Réplique le MSCI World."
 
 
 # ---------------------------------------------------------------------------
