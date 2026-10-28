@@ -2,7 +2,7 @@
  * Module de classification automatique des actifs financiers (Taxonomie Google Finance)
  * 
  * Google Finance classe automatiquement chaque instrument :
- * - FNB : Fonds Négocié en Bourse (Exchange-Traded Fund / ETF)
+ * - ETF : fonds indiciel coté (Exchange-Traded Fund)
  * - Action : Titre vif d'entreprise cotée
  * - Fonds Non Boursier : Actifs privés non cotés (SCPI, Private Equity, Liquidités/Livrets)
  * 
@@ -31,9 +31,9 @@ export const getAssetCategory = (ticker, assetDetails = null) => {
   if (!ticker) {
     return {
       type: 'fnb',
-      label: 'FNB (Fonds Négocié en Bourse)',
-      shortLabel: 'FNB',
-      fullLabel: 'FNB • ETF',
+      label: 'ETF (fonds indiciel coté)',
+      shortLabel: 'ETF',
+      fullLabel: 'ETF',
       badgeClass: 'badge-google-fnb',
       is_listed: true,
       is_fnb: true
@@ -66,9 +66,9 @@ export const getAssetCategory = (ticker, assetDetails = null) => {
   if (quoteType === 'ETF' || quoteType === 'MUTUALFUND') {
     return {
       type: 'fnb',
-      label: 'FNB (Fonds Négocié en Bourse)',
-      shortLabel: 'FNB',
-      fullLabel: 'FNB • ETF',
+      label: 'ETF (fonds indiciel coté)',
+      shortLabel: 'ETF',
+      fullLabel: 'ETF',
       badgeClass: 'badge-google-fnb',
       is_listed: true,
       is_fnb: true
@@ -104,9 +104,9 @@ export const getAssetCategory = (ticker, assetDetails = null) => {
   if (isKnownFnb || (isExplicitFnbClass && !KNOWN_STOCKS.has(cleanTicker)) || (hasEtfKeywords && assetDetails?.asset_class !== 'Actions')) {
     return {
       type: 'fnb',
-      label: 'FNB (Fonds Négocié en Bourse)',
-      shortLabel: 'FNB',
-      fullLabel: 'FNB • ETF',
+      label: 'ETF (fonds indiciel coté)',
+      shortLabel: 'ETF',
+      fullLabel: 'ETF',
       badgeClass: 'badge-google-fnb',
       is_listed: true,
       is_fnb: true
@@ -133,9 +133,9 @@ export const getAssetCategory = (ticker, assetDetails = null) => {
   // 5. Repli par défaut sur FNB
   return {
     type: 'fnb',
-    label: 'FNB (Fonds Négocié en Bourse)',
-    shortLabel: 'FNB',
-    fullLabel: 'FNB • ETF',
+    label: 'ETF (fonds indiciel coté)',
+    shortLabel: 'ETF',
+    fullLabel: 'ETF',
     badgeClass: 'badge-google-fnb',
     is_listed: true,
     is_fnb: true

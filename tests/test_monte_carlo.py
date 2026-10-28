@@ -67,9 +67,9 @@ def test_different_seeds_give_different_results():
 
 
 def test_zero_drift_keeps_expected_value_unchanged():
-    from app.quant.monte_carlo import select_drift
+    from app.quant.monte_carlo import zero_drift
     cov = np.array([[DAILY_VOL ** 2]])
-    drift = select_drift(np.array([DAILY_LOG_MEAN]), cov, "zero")
+    drift = zero_drift(cov)
     assert drift[0] == pytest.approx(-0.5 * DAILY_VOL ** 2)  # martingale : E[valeur finale] = mise
     res = generate_monte_carlo_simulation(drift, cov, np.array([1.0]), 20_000, HORIZON, INITIAL, seed=11)
     historical = _simulate(seed=11)
@@ -77,8 +77,3 @@ def test_zero_drift_keeps_expected_value_unchanged():
     assert res["value_at_risk_95"] > historical["value_at_risk_95"]
     assert res["metrics"]["median_absolute"] == pytest.approx(INITIAL * np.exp(-0.5 * DAILY_VOL ** 2 * HORIZON), rel=0.01)
 
-
-def test_unknown_drift_mode_is_rejected():
-    from app.quant.monte_carlo import select_drift
-    with pytest.raises(ValueError):
-        select_drift(np.array([0.0]), np.array([[1e-4]]), "momentum")

@@ -1,17 +1,7 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { COLORS, SERIES_COLORS } from '../utils/theme';
 
-const PALETTE = [
-  '#2563eb', // Bleu primaire
-  '#10b981', // Émeraude
-  '#f59e0b', // Ambre
-  '#8b5cf6', // Violet
-  '#ec4899', // Rose
-  '#06b6d4', // Cyan
-  '#f97316', // Orange
-  '#14b8a6', // Turquoise
-  '#6366f1', // Indigo
-  '#84cc16'  // Lime
-];
+const PALETTE = SERIES_COLORS;
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
@@ -50,16 +40,17 @@ export const PortfolioAllocationChart = ({ assetBreakdown = [], totalInvestment 
   return (
     <div className="allocation-chart-container">
       <div className="chart-header-row">
-        <h4 className="chart-title">Allocation d'Actifs</h4>
+        <h4 className="chart-title">Répartition par ligne</h4>
         <span className="total-badge">
-          Total : {totalInvestment.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+          {totalInvestment.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
         </span>
       </div>
 
-      <div style={{ width: '100%', height: 260 }}>
+      <div style={{ width: '100%', height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
+              isAnimationActive={false}
               data={chartData}
               cx="50%"
               cy="50%"
@@ -69,15 +60,14 @@ export const PortfolioAllocationChart = ({ assetBreakdown = [], totalInvestment 
               dataKey="value"
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+                <Cell key={`cell-${index}`} fill={entry.color} stroke={COLORS.surface} strokeWidth={1.5} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend
               verticalAlign="bottom"
-              height={36}
               formatter={(value, entry) => (
-                <span style={{ color: '#334155', fontWeight: 600, fontSize: '13px' }}>
+                <span style={{ color: COLORS.textSecondary, fontWeight: 500, fontSize: '13px' }}>
                   {value} ({entry.payload.weightPct.toFixed(1)}%)
                 </span>
               )}

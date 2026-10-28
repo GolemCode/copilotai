@@ -3,30 +3,33 @@
    ========================================================================== */
 
 :root {
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-light: #eff6ff;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --slate-900: #0f172a;
-  --slate-800: #1e293b;
-  --slate-700: #334155;
-  --slate-600: #475569;
-  --slate-500: #64748b;
-  --slate-400: #94a3b8;
-  --slate-300: #cbd5e1;
-  --slate-200: #e2e8f0;
-  --slate-100: #f1f5f9;
-  --slate-50: #f8fafc;
+  /* Accent unique (bleu marine) ; vert et rouge réservés aux gains et aux pertes */
+  --primary: #1f4e79;
+  --primary-hover: #173d5f;
+  --primary-light: #eef3f8;
+  --success: #0f7b4f;
+  --warning: #8a6d2f;
+  --danger: #b42318;
+  --slate-900: #111827;
+  --slate-800: #1f2937;
+  --slate-700: #374151;
+  --slate-600: #4b5563;
+  --slate-500: #6b7280;
+  --slate-400: #9ca3af;
+  --slate-300: #d1d5db;
+  --slate-200: #e5e7eb;
+  --slate-100: #f3f4f6;
+  --slate-50: #f9fafb;
   --white: #ffffff;
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --page-bg: #f6f7f9;
+  --border: #e4e7ec;
+  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 2px 6px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.10);
 }
 
 body {
@@ -4151,3 +4154,215 @@ body {
   align-items: center;
   gap: 8px;
 }
+
+/* ==========================================================================
+   Système visuel : surcharges appliquées à l'ensemble de l'interface
+   (surfaces blanches, bordures fines, un seul accent, chiffres alignés)
+   ========================================================================== */
+
+body {
+  background-color: var(--page-bg);
+  color: var(--slate-800);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Chiffres à chasse fixe : les colonnes de montants restent alignées */
+.kpi-value, .metric-value, .positions-table td, .chart-primary-price, .stress-kpi-box strong,
+.stress-matrix-table td, .bench-chip-val, .bench-chip-var, .tx-price, .tx-total {
+  font-variant-numeric: tabular-nums;
+}
+
+/* En-tête */
+.app-header { margin-bottom: 1.25rem; gap: 0.75rem; }
+.main-title { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.01em; color: var(--slate-900); }
+.main-subtitle { font-size: 0.875rem; color: var(--slate-500); }
+
+/* Onglets : soulignement plutôt que pastilles */
+.tab-navigation { border-bottom: 1px solid var(--border); align-items: flex-end; }
+.tab-buttons-group { background: transparent; padding: 0; gap: 0.25rem; border-radius: 0; }
+.tab-btn {
+  border-radius: 0;
+  padding: 10px 14px;
+  font-weight: 500;
+  color: var(--slate-500);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--slate-800); background: transparent; }
+.tab-btn.active {
+  background: transparent;
+  color: var(--primary);
+  box-shadow: none;
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* Bouton de l'assistant */
+.btn-header-copilot-trigger {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-weight: 600;
+  color: var(--slate-800);
+  box-shadow: none;
+  margin-bottom: 8px;
+}
+.btn-header-copilot-trigger:hover,
+.btn-header-copilot-trigger.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Surfaces : cartes blanches, bordure fine, sans ombre portée marquée */
+.dashboard-panel, .kpi-card, .positions-card, .chart-card, .portfolio-history-card, .metric-card,
+.stress-positions-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.section-title, .chart-title, .chart-header {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--slate-900);
+  letter-spacing: 0;
+}
+.section-subtitle, .chart-micro-subtitle, .kpi-subtitle, .metric-desc, .kpi-hint { color: var(--slate-500); }
+
+/* Indicateurs clés : libellé discret, valeur neutre (seul le signe d'une performance est coloré) */
+.border-kpi-blue, .border-kpi-amber, .border-kpi-red, .border-kpi-emerald, .border-kpi-indigo,
+.border-var, .border-cvar,
+.stress-kpi-box.border-blue, .stress-kpi-box.border-red, .stress-kpi-box.border-amber, .stress-kpi-box.border-emerald {
+  border-left: 1px solid var(--border);
+}
+.kpi-card { padding: 1rem 1.15rem; gap: 2px; }
+.kpi-title, .metric-title, .kpi-micro-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--slate-500);
+}
+.kpi-value, .metric-value { font-size: 1.55rem; font-weight: 600; color: var(--slate-900); letter-spacing: -0.01em; }
+.text-amber, .text-indigo, .text-dark-danger { color: var(--slate-900); }
+.text-success { color: var(--success); }
+.text-danger { color: var(--danger); }
+.stress-kpi-box {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* Formulaires */
+.form-input, .form-select, .param-input, .google-price-input, .google-date-input {
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.875rem;
+  background: var(--white);
+}
+.form-input:focus, .form-select:focus, .param-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(31, 78, 121, 0.12);
+}
+
+/* Boutons */
+.btn-simulate {
+  background: var(--primary);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  box-shadow: none;
+  transform: none;
+}
+.btn-simulate:hover:not(:disabled) { background: var(--primary-hover); box-shadow: none; transform: none; }
+.btn-sync-refresh, .btn-table-lookthrough, .chart-segment-btn, .btn-stress-scenario-pill, .benchmark-chip-card {
+  border-radius: var(--radius-sm);
+}
+.btn-table-lookthrough {
+  background: var(--white);
+  border: 1px solid var(--border);
+  color: var(--slate-700);
+  font-weight: 500;
+}
+.btn-table-lookthrough:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+/* Tableau des positions */
+.positions-table th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--slate-500);
+  background: var(--slate-50);
+  border-bottom: 1px solid var(--border);
+}
+.positions-table td { border-bottom: 1px solid var(--slate-100); color: var(--slate-800); }
+.positions-table tbody tr:hover td { background: var(--slate-50); }
+.table-summary-row td { background: var(--slate-50); border-top: 1px solid var(--border); }
+.badge-exchange, .badge-google-type-small, .badge-google-fnb, .badge-google-stock, .badge-google-unlisted {
+  background: var(--slate-100);
+  color: var(--slate-600);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* Graphique historique et repères */
+.chart-perf-badge { border-radius: var(--radius-sm); font-weight: 600; }
+.chart-segment-btn.active { background: var(--white); color: var(--primary); box-shadow: 0 0 0 1px var(--border); }
+.benchmark-chip-card { border: 1px solid var(--border); box-shadow: none; background: var(--white); }
+.benchmark-chip-card.active { border-color: var(--primary); background: var(--primary-light); }
+
+/* Stress tests : sélecteur de scénarios sobre */
+.btn-stress-scenario-pill { border: 1px solid var(--border); background: var(--white); box-shadow: none; }
+.btn-stress-scenario-pill.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+.scenario-explainer-box { background: var(--slate-50); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.stress-badge-scenario { background: var(--primary-light); color: var(--primary); border-radius: var(--radius-sm); }
+
+/* Barres de pondération (composition) */
+.weight-progress-bar { background: var(--primary); }
+
+/* Assistant : accent réservé aux messages de l'utilisateur */
+.bubble-user { background: var(--primary); }
+.assistant-tag, .source-score-pill { border-radius: var(--radius-sm); }
+.copilot-widget-container, .copilot-modal-dialog { border: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+
+/* Pastilles d'en-tête des graphiques : neutres, l'accent est réservé à l'interaction */
+.total-badge, .pill-item, .allocation-tags-pill .pill-item {
+  background: var(--slate-100);
+  color: var(--slate-700);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* Une pastille d'en-tête tient sur une ligne ; les légendes des camemberts passent à la ligne sans déborder */
+.total-badge { white-space: nowrap; }
+.chart-card .recharts-legend-wrapper { line-height: 1.6; }
+
+/* Résultat nul : pastille neutre */
+.pnl-badge-neutral { background: var(--slate-100); color: var(--slate-600); }
+
+/* Indicateurs de risque et de stress : bordure uniforme, la couleur est portée par le chiffre */
+.metric-card.border-var, .metric-card.border-cvar { border-left: 1px solid var(--border); }
+.stress-kpi-box,
+.stress-kpi-box.border-blue, .stress-kpi-box.border-red, .stress-kpi-box.border-amber, .stress-kpi-box.border-emerald {
+  border: 1px solid var(--border);
+  border-top-width: 1px;
+}
+
+/* Fenêtre de composition : liens sources en style secondaire, chiffre clé en accent */
+.source-verify-link, .source-verify-link.factsheet {
+  background: var(--white);
+  border: 1px solid var(--border);
+  color: var(--slate-700);
+  border-radius: var(--radius-sm);
+}
+.source-verify-link:hover { border-color: var(--primary); color: var(--primary); }
+.lookthrough-table-caption .caption-highlight { color: var(--primary); }

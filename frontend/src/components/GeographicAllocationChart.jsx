@@ -1,12 +1,13 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { COLORS, SERIES_COLORS } from '../utils/theme';
 
 const GEO_COLORS = {
-  'États-Unis': '#2563eb',             // Bleu roi
-  'Europe / France': '#10b981',        // Vert émeraude
-  'Asie & Pacifique': '#f59e0b',       // Ambre
-  'International / Autres': '#8b5cf6', // Violet
-  'Autres pays (non détaillés)': '#a78bfa',
-  'Non ventilé': '#94a3b8'             // Gris : aucune répartition publiée (non coté, or, monétaire...)
+  'États-Unis': SERIES_COLORS[0],
+  'Europe / France': SERIES_COLORS[1],
+  'Asie & Pacifique': SERIES_COLORS[2],
+  'International / Autres': SERIES_COLORS[3],
+  'Autres pays (non détaillés)': SERIES_COLORS[4],
+  'Non ventilé': SERIES_COLORS[8] // aucune répartition publiée (non coté, or, monétaire...)
 };
 
 const CustomTooltip = ({ active, payload }) => {
@@ -44,7 +45,7 @@ export const GeographicAllocationChart = ({
     name: item.region,
     value: item.amount,
     weightPct: item.percentage,
-    color: GEO_COLORS[item.region] || '#64748b'
+    color: GEO_COLORS[item.region] || COLORS.muted
   }));
 
   const topRegion = chartData[0];
@@ -53,22 +54,23 @@ export const GeographicAllocationChart = ({
     <div className="allocation-chart-container">
       <div className="chart-header-row">
         <div>
-          <h4 className="chart-title">Exposition Géographique</h4>
+          <h4 className="chart-title">Exposition géographique</h4>
           <span className="chart-micro-subtitle">
             {isLoading ? 'Actualisation...' : (isLiveScraped ? 'Répartitions par pays publiées (JustETF, Yahoo Finance)' : 'Répartition par pays des positions')}
           </span>
         </div>
         {topRegion && (
           <span className="total-badge">
-            Top : {topRegion.name} ({topRegion.weightPct.toFixed(1)}%)
+            {topRegion.name} : {topRegion.weightPct.toFixed(1)} %
           </span>
         )}
       </div>
 
-      <div style={{ width: '100%', height: 230 }}>
+      <div style={{ width: '100%', height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
+              isAnimationActive={false}
               data={chartData}
               cx="50%"
               cy="50%"
@@ -78,15 +80,14 @@ export const GeographicAllocationChart = ({
               dataKey="value"
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+                <Cell key={`cell-${index}`} fill={entry.color} stroke={COLORS.surface} strokeWidth={1.5} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend
               verticalAlign="bottom"
-              height={36}
               formatter={(value, entry) => (
-                <span style={{ color: '#334155', fontWeight: 600, fontSize: '12px' }}>
+                <span style={{ color: COLORS.textSecondary, fontWeight: 500, fontSize: '12px' }}>
                   {value} ({entry.payload.weightPct.toFixed(1)}%)
                 </span>
               )}

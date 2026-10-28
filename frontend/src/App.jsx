@@ -11,7 +11,7 @@ import { GeographicAllocationChart } from './components/GeographicAllocationChar
 import { StressTestPositionsTable } from './components/StressTestPositionsTable';
 import { getAssetCategory } from './utils/assetClassifier';
 import { Icon } from './components/Icon';
-import { getDisplayTicker, getExchangeName } from './utils/format';
+import { getDisplayTicker, getExchangeName, signTone, toneClass } from './utils/format';
 import {
   BarChart,
   Bar,
@@ -26,6 +26,7 @@ import {
   Cell
 } from 'recharts';
 import './App.css';
+import { COLORS } from './utils/theme';
 
 const CustomSimulationTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -53,7 +54,7 @@ const CustomSimulationTooltip = ({ active, payload, label }) => {
           const netPnl = finalAbs - finalInv;
           const pnlPct = finalInv > 0 ? (netPnl / finalInv) * 100 : 0;
           const sign = netPnl >= 0 ? '+' : '';
-          const pnlClass = netPnl >= 0 ? 'text-success' : 'text-danger';
+          const pnlClass = toneClass(netPnl);
 
           return (
             <div key={index} className="tooltip-metric">
@@ -232,9 +233,6 @@ function App() {
 
   // Stratégies stochastiques (Buy & Hold et Versements programmés DCA)
   const [strategyType, setStrategyType] = useState('buy_and_hold');
-  // Dérive : nulle par défaut (espérance de rendement nulle, prudent pour la VaR) ou moyenne historique
-  const [driftMode, setDriftMode] = useState('zero');
-  const [simulatedDriftMode, setSimulatedDriftMode] = useState('zero');
   const [dcaAmount, setDcaAmount] = useState(200);
   const [dcaFrequency, setDcaFrequency] = useState(30);
 
@@ -582,11 +580,9 @@ function App() {
       assets: simAssets,
       time_horizon_days: timeHorizon,
       num_paths: 10000,
-      strategy: strategyPayload,
-      drift: driftMode
+      strategy: strategyPayload
     });
-    setSimulatedDriftMode(driftMode);
-  }, [portfolio, strategyType, dcaAmount, dcaFrequency, timeHorizon, driftMode, startSimulation]);
+  }, [portfolio, strategyType, dcaAmount, dcaFrequency, timeHorizon, startSimulation]);
 
 
 
@@ -861,7 +857,7 @@ function App() {
               <div className="positions-card">
                 <div className="chart-header-row">
                   <div>
-                    <h4 className="chart-title">Détail des Positions & Valorisation</h4>
+                    <h4 className="chart-title">Positions</h4>
                   </div>
                   {isMetricsLoading && (
                     <span className="metrics-loading-indicator">Actualisation des cours...</span>
@@ -879,7 +875,7 @@ function App() {
                         <th className="right">Valeur totale</th>
                         <th className="right">Plus/Moins-value</th>
                         <th className="right">Poids</th>
-                        <th className="center">Mode Look-Through</th>
+                        <th className="center">Composition</th>
                         <th className="center" style={{ width: '48px' }}></th>
                       </tr>
                     </thead>
@@ -968,11 +964,11 @@ function App() {
                               <td className="right">
                                 {gainLoss !== null ? (
                                   <div className="pnl-cell">
-                                    <span className={`pnl-amount ${gainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                                    <span className={`pnl-amount ${toneClass(gainLoss)}`}>
                                       {gainLoss >= 0 ? '+' : ''}
                                       {gainLoss.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                                     </span>
-                                    <span className={`pnl-badge ${gainLoss >= 0 ? 'pnl-badge-pos' : 'pnl-badge-neg'}`}>
+                                    <span className={`pnl-badge pnl-badge-${signTone(gainLoss)}`}>
                                       {gainLoss >= 0 ? '+' : ''}{gainLossPct.toFixed(2)}%
                                     </span>
                                   </div>
@@ -988,7 +984,7 @@ function App() {
                                 </span>
                               </td>
 
-                              {/* 8. Mode Look-Through */}
+                              {/* 8. Composition */}
                               <td className="center">
                                 <button
                                   type="button"
@@ -1090,11 +1086,11 @@ function App() {
                           <td className="right">
                             {totalCostBasis > 0 && totalCurrentValue > 0 ? (
                               <div className="pnl-cell">
-                                <span className={`pnl-amount ${totalGainLoss >= 0 ? 'text-success' : 'text-danger'}`}>
+                                <span className={`pnl-amount ${toneClass(totalGainLoss)}`}>
                                   {totalGainLoss >= 0 ? '+' : ''}
                                   {totalGainLoss.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                                 </span>
-                                <span className={`pnl-badge ${totalGainLoss >= 0 ? 'pnl-badge-pos' : 'pnl-badge-neg'}`}>
+                                <span className={`pnl-badge pnl-badge-${signTone(totalGainLoss)}`}>
                                   {totalGainLoss >= 0 ? '+' : ''}{totalGainLossPct.toFixed(2)}%
                                 </span>
                               </div>
@@ -1163,7 +1159,7 @@ function App() {
         {/* --- ONGLET 2 : STRESS TEST & MONTE CARLO --- */}
         {activeTab === 'simulation' && (
           <div className="tab-content">
-            {/* Détail des Positions Soumises au Stress Test */}
+            {/* Stress tests sur les positions */}
             <StressTestPositionsTable
               portfolio={portfolio}
               availableAssets={availableAssets}
@@ -1175,7 +1171,7 @@ function App() {
             />
 
             <div className="dashboard-panel">
-              <h3 className="section-title">Paramètres de la Simulation de Monte Carlo</h3>
+              <h3 className="section-title">Simulation Monte Carlo</h3>
 
               <div className="simulation-controls-row">
                 <div className="control-group">
@@ -1205,17 +1201,6 @@ function App() {
                   </select>
                 </div>
 
-                <div className="control-group">
-                  <label className="params-label" title="Tendance moyenne supposée des rendements simulés">Hypothèse de dérive :</label>
-                  <select
-                    value={driftMode}
-                    onChange={(e) => setDriftMode(e.target.value)}
-                    className="form-select"
-                  >
-                    <option value="zero">Nulle (prudente, recommandée pour la VaR)</option>
-                    <option value="historical">Historique (moyenne des 3 dernières années)</option>
-                  </select>
-                </div>
               </div>
 
               {strategyType === 'dca' && (
@@ -1250,7 +1235,7 @@ function App() {
                   <div className="metric-card border-var">
                     <h3 className="metric-title">Value at Risk 95 %</h3>
                     <p className="metric-value text-danger">{var95?.toFixed(2)} €</p>
-                    <span className="metric-desc">Dans 95 % des scénarios, la perte à l'horizon simulé ne dépasse pas ce montant. Dérive {simulatedDriftMode === 'zero' ? 'nulle' : 'historique'}.</span>
+                    <span className="metric-desc">Dans 95 % des scénarios, la perte à l'horizon simulé ne dépasse pas ce montant. Aucune tendance de marché supposée (dérive nulle).</span>
                   </div>
                   <div className="metric-card border-cvar">
                     <h3 className="metric-title">Expected Shortfall 95 %</h3>
@@ -1261,30 +1246,30 @@ function App() {
 
                 {/* Histogramme de distribution */}
                 <div className="chart-wrapper medium">
-                  <h4 className="chart-header">Distribution du PnL Final et Seuil VaR 95%</h4>
+                  <h4 className="chart-header">Distribution du résultat à l'horizon et seuil de VaR 95 %</h4>
                   <ResponsiveContainer width="100%" height="88%">
                     <BarChart data={histogramData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="pnl" tickFormatter={(val) => `${val}€`} minTickGap={30} />
+                      <XAxis dataKey="pnl" tickFormatter={(val) => `${Math.round(val).toLocaleString('fr-FR')} €`} minTickGap={30} />
                       <YAxis />
                       <Tooltip formatter={(value) => [`${value} scénarios`, 'Fréquence']} labelFormatter={(label) => `PnL : ${label} €`} />
                       <Bar dataKey="frequence">
                         {histogramData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={varPnlThreshold != null && entry.pnl <= varPnlThreshold ? '#dc3545' : '#3b82f6'} />
+                          <Cell key={`cell-${index}`} fill={varPnlThreshold != null && entry.pnl <= varPnlThreshold ? COLORS.negative : COLORS.accentSoft} />
                         ))}
                       </Bar>
                       <ReferenceLine
                         x={varBinPnl}
-                        stroke="#dc3545"
+                        stroke={COLORS.negative}
                         strokeWidth={2}
                         strokeDasharray="4 4"
-                        label={{ position: 'top', value: 'Seuil VaR 95%', fill: '#dc3545', fontSize: 12, fontWeight: 'bold' }}
+                        label={{ position: 'top', value: 'Seuil VaR 95 %', fill: COLORS.negative, fontSize: 12, fontWeight: 600 }}
                       />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
-                {/* Trajectoires stochastiques */}
+                {/* Trajectoires simulées */}
                 {quantitativeData?.paths && quantitativeData.paths.length > 0 && (() => {
                   // Calcul d'un domaine Y serré basé sur p1/p99 pour un rendu visuel frappant
                   const pathsData = quantitativeData.paths;
@@ -1300,9 +1285,9 @@ function App() {
                   return (
                     <div className="chart-wrapper large">
                       <h3 className="chart-header">
-                        Faisceau de Trajectoires Stochastiques
+                        Trajectoires simulées
                         <span className="chart-subtitle">
-                          Médiane, Scénario Optimiste (1%) et Scénario de Crise (99%)
+                          Médiane, centile 99 (favorable) et centile 1 (défavorable)
                         </span>
                       </h3>
                       <ResponsiveContainer width="100%" height="88%">
@@ -1320,14 +1305,14 @@ function App() {
                           <Tooltip content={(props) => <CustomSimulationTooltip {...props} />} />
 
                           {Object.keys(pathsData[0] || {}).filter(key => key.startsWith('path_')).map((key) => (
-                            <Line key={key} type="monotone" dataKey={key} stroke="#cbd5e1" strokeWidth={0.8} dot={false} isAnimationActive={false} opacity={0.25} style={{ pointerEvents: 'none' }} />
+                            <Line key={key} type="monotone" dataKey={key} stroke="#d5dae1" strokeWidth={0.8} dot={false} isAnimationActive={false} opacity={0.25} style={{ pointerEvents: 'none' }} />
                           ))}
 
-                          <Line type="monotone" dataKey="p99" name="Scénario Optimiste (1%)" stroke="#10b981" strokeWidth={2.5} dot={false} isAnimationActive={false} />
-                          <Line type="monotone" dataKey="median" name="Trajectoire Médiane" stroke="#1e293b" strokeWidth={2.5} dot={false} isAnimationActive={false} />
-                          <Line type="monotone" dataKey="p1" name="Scénario de Crise (99%)" stroke="#ef4444" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                          <Line type="monotone" dataKey="p99" name="Scénario favorable (centile 99)" stroke={COLORS.positive} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                          <Line type="monotone" dataKey="median" name="Trajectoire médiane" stroke={COLORS.accent} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                          <Line type="monotone" dataKey="p1" name="Scénario défavorable (centile 1)" stroke={COLORS.negative} strokeWidth={2.5} dot={false} isAnimationActive={false} />
 
-                          <ReferenceLine y={quantitativeData.initial_investment} stroke="#475569" strokeWidth={1.5} strokeDasharray="3 3" label={{ position: 'left', value: 'Capital initial', fill: '#475569', fontSize: 10 }} />
+                          <ReferenceLine y={quantitativeData.initial_investment} stroke={COLORS.muted} strokeWidth={1.2} strokeDasharray="3 3" label={{ position: 'left', value: 'Capital initial', fill: '#475569', fontSize: 10 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -1348,7 +1333,7 @@ function App() {
         portfolioContext={portfolioContext}
       />
 
-      {/* Bulle Info / Modale Mode Look-Through */}
+      {/* Fenêtre de composition (positions, pays, secteurs) */}
       {selectedLookThroughTicker && (
         <LookThroughModal
           ticker={selectedLookThroughTicker}

@@ -1,5 +1,4 @@
 import { ChatInterface } from './ChatInterface';
-import { Icon } from './Icon';
 import { useRagChat } from '../hooks/useRagChat';
 
 export const FloatingCopilot = ({
@@ -10,25 +9,12 @@ export const FloatingCopilot = ({
   portfolioContext = null
 }) => {
   const chatState = useRagChat();
-  // 1. Mode Bulle Réduite (Bouton d'action flottant en bas à droite)
+  // Fermé : rien à afficher, l'assistant s'ouvre depuis le bouton de l'en-tête
   if (!isOpen) {
-    return (
-      <aside className="copilot-floating-wrapper" aria-label="Copilot IA Assistant">
-        <button
-          type="button"
-          className="copilot-fab-button"
-          onClick={() => setIsOpen(true)}
-          title="Ouvrir l'assistant documentaire"
-          aria-label="Ouvrir l'assistant documentaire"
-        >
-          <span className="fab-icon"><Icon name="assistant" size={18} /></span>
-          <span className="fab-text">Assistant</span>
-        </button>
-      </aside>
-    );
+    return null;
   }
 
-  // 2. Mode Fenêtre Modale Détachée (Grande fenêtre centrée pour lecture confortable)
+  // Mode agrandi : fenêtre centrée
   if (isExpanded) {
     return (
       <div className="copilot-modal-backdrop" onClick={() => setIsExpanded(false)}>
@@ -37,7 +23,7 @@ export const FloatingCopilot = ({
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
-          aria-label="Terminal Copilot AI"
+          aria-label="Assistant documentaire"
         >
           <ChatInterface
             mode="window"

@@ -1,4 +1,4 @@
-import { formatDate, formatPct } from '../utils/format';
+import { formatDate, formatPct, toneClass } from '../utils/format';
 
 /**
  * Indicateurs clés.
@@ -20,7 +20,6 @@ export const MetricsCards = ({
   const costBasis = totalCostBasis ?? 0;
   const unrealizedPnl = portVal - costBasis;
   const unrealizedPnlPct = costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : null;
-  const isPnlPositive = unrealizedPnl >= 0;
 
   // 2. Performance réelle : annualisée seulement au-delà d'un an (règle GIPS)
   const perfValue = performance
@@ -52,8 +51,8 @@ export const MetricsCards = ({
           {portVal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
         </div>
         <div className="kpi-subtitle">
-          Plus-value latente : <strong className={isPnlPositive ? 'text-success' : 'text-danger'}>
-            {isPnlPositive ? '+' : ''}{unrealizedPnl.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+          Plus-value latente : <strong className={toneClass(unrealizedPnl)}>
+            {unrealizedPnl >= 0 ? '+' : ''}{unrealizedPnl.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
             {unrealizedPnlPct !== null && ` (${formatPct(unrealizedPnlPct, true)})`}
           </strong>
         </div>
@@ -64,7 +63,7 @@ export const MetricsCards = ({
         <span className="kpi-title" title="Rendement pondéré dans le temps : neutralise les apports et retraits">
           Performance réelle (TWR)
         </span>
-        <div className={`kpi-value ${perfValue !== null && perfValue < 0 ? 'text-danger' : 'text-success'}`}>
+        <div className={`kpi-value ${toneClass(perfValue)}`}>
           {formatPct(perfValue, true)}
         </div>
         <div className="kpi-subtitle">{perfSubtitle}</div>
@@ -73,7 +72,7 @@ export const MetricsCards = ({
       {/* 3. Ratio de Sharpe */}
       <div className="kpi-card border-kpi-indigo">
         <span className="kpi-title">{sharpeLabel}</span>
-        <div className="kpi-value text-indigo">
+        <div className="kpi-value">
           {sharpe !== null && sharpe !== undefined ? sharpe.toFixed(2) : '—'}
         </div>
         <div className="kpi-subtitle" title={riskFreeSource || undefined}>
@@ -85,7 +84,7 @@ export const MetricsCards = ({
       {/* 4. Volatilité */}
       <div className="kpi-card border-kpi-amber">
         <span className="kpi-title">{volatilityLabel}</span>
-        <div className="kpi-value text-amber">
+        <div className="kpi-value">
           {formatPct(volatility)}
         </div>
         <div className="kpi-subtitle">

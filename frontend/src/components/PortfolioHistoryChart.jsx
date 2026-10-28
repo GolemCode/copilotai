@@ -10,6 +10,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { Icon } from './Icon';
+import { COLORS } from '../utils/theme';
 
 // Formattage des dates à la française
 const formatFrenchDate = (dateStr, formatType = 'short') => {
@@ -312,12 +313,12 @@ export const PortfolioHistoryChart = ({
           >
             <defs>
               <linearGradient id="fintechBlueGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.22} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.00} />
+                <stop offset="0%" stopColor={COLORS.accent} stopOpacity={0.14} />
+                <stop offset="100%" stopColor={COLORS.accent} stopOpacity={0} />
               </linearGradient>
             </defs>
 
-            <CartesianGrid vertical={false} stroke="#f1f5f9" strokeDasharray="3 3" />
+            <CartesianGrid vertical={false} stroke={COLORS.grid} />
 
             <XAxis
               dataKey="date"
@@ -328,7 +329,7 @@ export const PortfolioHistoryChart = ({
                 return formatFrenchDate(val, 'monthYear');
               }}
               minTickGap={35}
-              stroke="#94a3b8"
+              stroke={COLORS.axis}
               fontSize={11}
               tickLine={false}
               axisLine={{ stroke: '#e2e8f0' }}
@@ -336,7 +337,7 @@ export const PortfolioHistoryChart = ({
 
             <YAxis
               tickFormatter={(val) => `${Math.round(val).toLocaleString('fr-FR')} €`}
-              stroke="#94a3b8"
+              stroke={COLORS.axis}
               fontSize={11}
               domain={['auto', 'auto']}
               tickLine={false}
@@ -395,7 +396,7 @@ export const PortfolioHistoryChart = ({
               type="monotone"
               dataKey="displayPort"
               name="Mon Portefeuille"
-              stroke="#2563eb"
+              stroke={COLORS.accent}
               strokeWidth={2.2}
               fill="url(#fintechBlueGradient)"
               isAnimationActive={false}
@@ -408,7 +409,7 @@ export const PortfolioHistoryChart = ({
                       cx={cx}
                       cy={cy}
                       r={4.5}
-                      fill="#2563eb"
+                      fill={COLORS.accent}
                       stroke="#ffffff"
                       strokeWidth={2}
                     />
@@ -423,7 +424,7 @@ export const PortfolioHistoryChart = ({
                 type="monotone"
                 dataKey="displayBench"
                 name={activeBenchObj.name}
-                stroke="#f59e0b"
+                stroke={COLORS.benchmark}
                 strokeWidth={1.8}
                 dot={false}
                 strokeDasharray="4 4"
@@ -437,7 +438,7 @@ export const PortfolioHistoryChart = ({
       {/* 3. SECTION BENCHMARKS DE MARCHÉ */}
       <div className="benchmarks-comparison-strip">
         <div className="benchmarks-strip-header">
-          <span className="benchmarks-strip-title">Benchmarks & Indices de Référence</span>
+          <span className="benchmarks-strip-title">Indices de référence</span>
           <span className="benchmarks-strip-hint">{view.benchHint}</span>
         </div>
 

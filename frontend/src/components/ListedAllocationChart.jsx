@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { COLORS, SERIES_COLORS } from '../utils/theme';
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
@@ -31,43 +32,43 @@ export const ListedAllocationChart = ({
 
   const data = [
     {
-      name: 'FNB (Fonds Négociés en Bourse / ETF)',
-      shortName: 'FNB (ETF)',
+      name: 'ETF (fonds indiciels cotés)',
+      shortName: 'ETF',
       value: fnbAmount,
       weightPct: fnbPct,
-      color: '#2563eb'
+      color: COLORS.accent
     },
     {
       name: 'Actions (Titres vifs)',
       shortName: 'Actions',
       value: stockAmount,
       weightPct: stockPct,
-      color: '#8b5cf6' // Violet
+      color: COLORS.accentSoft
     },
     {
       name: 'Fonds Non Boursiers (Privés / SCPI)',
       shortName: 'Fonds Non Boursiers',
       value: unlistedAmount,
       weightPct: unlistedPct,
-      color: '#10b981' // Vert émeraude
+      color: SERIES_COLORS[3]
     }
   ].filter(d => d.value > 0);
 
   // Fallback si aucune donnée
   const displayData = data.length > 0 ? data : [
-    { name: 'FNB (Fonds Négociés en Bourse)', value: 100, weightPct: 100, color: '#2563eb' }
+    { name: 'ETF', value: 100, weightPct: 100, color: COLORS.accent }
   ];
 
   return (
     <div className="allocation-chart-container">
       <div className="chart-header-row">
         <div>
-          <h4 className="chart-title">Typologie des Actifs</h4>
+          <h4 className="chart-title">Types d'actifs</h4>
           <span className="chart-micro-subtitle">ETF, actions et actifs non cotés</span>
         </div>
         <div className="allocation-tags-pill">
           {fnbAmount > 0 && (
-            <span className="pill-item text-primary">{fnbPct.toFixed(1)}% FNB</span>
+            <span className="pill-item text-primary">{fnbPct.toFixed(1)} % ETF</span>
           )}
           {stockAmount > 0 && (
             <span className="pill-item text-purple">{stockPct.toFixed(1)}% Actions</span>
@@ -78,10 +79,11 @@ export const ListedAllocationChart = ({
         </div>
       </div>
 
-      <div style={{ width: '100%', height: 230 }}>
+      <div style={{ width: '100%', height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
+              isAnimationActive={false}
               data={displayData}
               cx="50%"
               cy="50%"
@@ -91,15 +93,14 @@ export const ListedAllocationChart = ({
               dataKey="value"
             >
               {displayData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+                <Cell key={`cell-${index}`} fill={entry.color} stroke={COLORS.surface} strokeWidth={1.5} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend
               verticalAlign="bottom"
-              height={36}
               formatter={(value, entry) => (
-                <span style={{ color: '#334155', fontWeight: 600, fontSize: '12px' }}>
+                <span style={{ color: COLORS.textSecondary, fontWeight: 500, fontSize: '12px' }}>
                   {entry.payload.shortName || value} ({entry.payload.weightPct.toFixed(1)}%)
                 </span>
               )}

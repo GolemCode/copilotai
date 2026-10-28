@@ -20,3 +20,10 @@ export const formatPct = (value, signed = false) => {
   const sign = signed && value >= 0 ? '+' : '';
   return `${sign}${value.toFixed(2)} %`;
 };
+
+// Tonalité d'un résultat : vert pour un gain, rouge pour une perte, neutre s'il s'arrondit à zéro
+export const signTone = (value) => {
+  if (value === null || value === undefined || Math.abs(value) < 0.005) return 'neutral';
+  return value > 0 ? 'pos' : 'neg';
+};
+export const toneClass = (value) => ({ pos: 'text-success', neg: 'text-danger', neutral: '' })[signTone(value)];
